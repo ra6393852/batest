@@ -77,7 +77,7 @@ npm run dist:win
 
 생성 위치: `release/Baccarat-Live-Analyzer-0.1.0-x64-Setup.exe`.
 
-[.github/workflows/windows.yml](.github/workflows/windows.yml)은 PR/main push/수동 실행에서 단위 테스트, 데스크톱 테스트, x64 NSIS 설치 파일을 빌드하고 `baccarat-windows-x64-installer` 아티팩트로 보관합니다. 코드 서명 인증서는 설정하지 않았으므로 초기 설치 파일은 미서명입니다. 현재 클라우드는 Linux이며 실제 Windows 설치·실행 결과는 별도 검증이 필요합니다. 빌드 생성 여부는 [docs/validation.md](docs/validation.md)에 기록합니다.
+[.github/workflows/windows.yml](.github/workflows/windows.yml)은 PR/main push/수동 실행에서 단위 테스트, 데스크톱 테스트, x64 NSIS 빌드, 설치 EXE의 무인 설치와 설치된 앱의 통합 테스트를 수행합니다. 설치 파일은 `baccarat-windows-x64-installer` 아티팩트로 보관합니다. 코드 서명 인증서는 설정하지 않았으므로 초기 설치 파일은 미서명입니다. 사용자 PC의 실제 사이트 로그인·게임 수집은 별도 검증이 필요합니다. 검사 결과는 [docs/validation.md](docs/validation.md)와 PR checks에서 확인할 수 있습니다.
 
 분석 DB는 Windows `%APPDATA%/baccarat-live-analyzer/baccarat.sqlite`에 저장합니다(Electron `userData`, 개발/패키징 이름에 따라 상위 폴더명이 다를 수 있음). 앱을 닫은 뒤 DB를 백업하세요. 삭제·제거 시 기존 분석 데이터를 자동 삭제하지 않습니다. 사이트의 로그인 세션은 Electron 브라우저 세션에만 보관하며 분석 DB에는 저장하지 않습니다.
 

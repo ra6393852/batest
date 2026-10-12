@@ -14,7 +14,8 @@
 | 색상 그림장 CV 및 실제 사이트 OCR | 미구현 또는 미검증. OCR 테스트는 로컬 이미지 BANKER 텍스트에 한정 |
 | Windows 앱 파일 교차 패키징 | 성공, `win-unpacked` 생성 |
 | Linux에서 Windows NSIS 설치 파일 | 실패. 시스템 Wine 부재 진단 후 공식 Wine 11 toolset 시도, DLL 로딩 오류 발생. 체크섬/TLS 검증은 유지했으며 미완성 설치 EXE는 배포하지 않음 |
-| Windows GitHub Actions / 설치·실행 | CI 결과는 PR에서 확인. Windows PC에서 실제 사이트 로그인·설치 테스트는 별도 필요 |
+| Windows GitHub Actions | [첫 CI 실행](https://github.com/ra6393852/batest/actions/runs/38319862005) 성공. 단위 테스트 31개, Electron 테스트 1개, Windows NSIS 설치 EXE 빌드 및 아티팩트 업로드 통과 |
+| 설치된 Windows 앱 | CI에 설치 EXE의 무인 설치 후 설치된 앱 통합 테스트를 추가함. 최신 결과는 PR checks에서 확인. 사용자 Windows 10/11 PC의 실제 사이트 로그인·게임 수집은 별도 필요 |
 
 Linux의 `--no-sandbox`는 컨테이너 사용자 네임스페이스 제한 때문에 로컬 fixture 전용 테스트에서만 사용합니다. 해당 `--smoke-test`는 실제 사이트 접속을 거절하고 테스트 전용 DB/세션을 사용합니다. Windows 및 일반 앱 실행에는 적용하지 않습니다.
 

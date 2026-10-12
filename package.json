@@ -72,7 +72,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "packaging/installer.nsh"
     },
     "extraResources": [
       {
@@ -90,14 +91,6 @@
       {
         "from": "dist/extension",
         "to": "chrome-extension"
-      }
-    ],
-    "protocols": [
-      {
-        "name": "Baccarat Live Analyzer",
-        "schemes": [
-          "baccarat-analyzer"
-        ]
       }
     ]
   }

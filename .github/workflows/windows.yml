@@ -33,8 +33,13 @@ jobs:
           $env:DESKTOP_TEST_EXECUTABLE = Join-Path $installDir 'Baccarat Live Analyzer.exe'
           $env:DESKTOP_TEST_OCR_RESOURCES = Join-Path $installDir 'resources/ocr'
           if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Installed executable missing' }
-          $protocol = (Get-ItemProperty 'Registry::HKEY_CLASSES_ROOT\baccarat-analyzer\shell\open\command').'(default)'
-          if (-not $protocol.Contains('Baccarat Live Analyzer.exe')) { throw 'Chrome launch protocol not registered' }
+          try {
+            $protocol = (Get-ItemProperty 'Registry::HKEY_CLASSES_ROOT\baccarat-analyzer\shell\open\command').'(default)'
+            if (-not $protocol.Contains('Baccarat Live Analyzer.exe')) { throw 'Chrome launch protocol not registered' }
+          } catch {
+            Write-Output "::error::Chrome launch registration failed: $($_.Exception.Message)"
+            throw
+          }
           npx --no-install playwright test --reporter=list,github
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

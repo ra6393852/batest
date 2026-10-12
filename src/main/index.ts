@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -8,6 +8,7 @@ import { SITE_URL, navigationAllowed } from './browser-policy';
 import { profileSchema, observationsSchema, observationSchema } from '../shared/validation';
 import { parseOCR } from '../collector/ocr';
 import { ObservationTracker } from '../collector/dom';
+import { ChromeBridge } from './chrome-bridge';
 import type { AdapterProfile, CollectorStatus } from '../shared/types';
 
 let store: AnalyzerStore, window: BrowserWindow, browser: WebContentsView | undefined;
@@ -15,6 +16,7 @@ let mode: 'site' | 'demo' = 'site', profile: AdapterProfile | null = null;
 let ocrWorker: import('tesseract.js').Worker | undefined;
 let ocrBusy = false, ocrTracker = new ObservationTracker();
 let lastOCR = '';
+let chromeBridge: ChromeBridge | undefined;
 const rendererPath = join(__dirname, '../renderer/index.html');
 const demoPath = join(__dirname, '../fixtures/table.html');
 const rendererURL = pathToFileURL(rendererPath).href;
@@ -79,6 +81,23 @@ void app.whenReady().then(async () => {
     webPreferences: { preload: join(__dirname, '../preload/dashboard.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
+  const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
+  if (!isSmoke) {
+    chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,
+      rows => { store.ingest(rows); changed(); }, notifyChrome,
+      (message, collecting) => status(collecting ? 'collecting' : 'unsupported', message, collecting ? 'visible-only' : 'unknown'));
+    try { await chromeBridge.listen(); } catch {
+      // Keep offline analysis available if another local application owns the port.
+      await chromeBridge.close(); chromeBridge = undefined;
+    }
+  }
+  ipcMain.handle('chrome:info', event => { local(event); return chromeBridge?.info() ?? { state: isSmoke ? 'waiting' : 'error', paired: false, pairingCode: null, tabs: 0,
+    message: isSmoke ? '로컬 테스트 모드 · Chrome 연결 꺼짐' : 'Chrome 연결 포트 38741 사용 실패 · 다른 분석기 인스턴스를 확인하세요.' }; });
+  ipcMain.handle('chrome:reset', event => { local(event); chromeBridge?.reset(); });
+  ipcMain.handle('chrome:extension-folder', async event => { local(event);
+    const folder = app.isPackaged ? join(process.resourcesPath, 'chrome-extension') : join(app.getAppPath(), 'dist/extension');
+    const error = await shell.openPath(folder); if (error) throw new Error('확장 폴더를 열지 못했습니다.'); return folder;
+  });
   ipcMain.handle('analyzer:snapshot', (event, room, shoe) => { local(event); return store.snapshot(z.string().max(120).optional().parse(room), z.string().max(120).optional().parse(shoe)); });
   ipcMain.handle('browser:open', async (event, selected) => { local(event); await openBrowser(z.enum(['site', 'demo']).parse(selected)); });
   ipcMain.handle('browser:close', event => { local(event); closeBrowser(); status('idle', '브라우저 닫힘'); });
@@ -97,7 +116,7 @@ void app.whenReady().then(async () => {
     const bytes = readFileSync(selected.filePaths[0]); if (bytes.length > 32_768) throw new Error('프로필 파일이 너무 큽니다.');
     const next = profileSchema.parse(JSON.parse(bytes.toString('utf8')));
     writeFileSync(profilePath, JSON.stringify(next, null, 2), { mode: 0o600 }); profile = next;
-    closeBrowser(); status('idle', '프로필 저장됨 · 사이트를 다시 열어 수집 상태 확인'); return true;
+    closeBrowser(); chromeBridge?.refreshProfile(); status('idle', '프로필 저장됨 · Chrome 연결의 결과 인식 상태 확인'); return true;
   });
   ipcMain.handle('collector:config', event => { if (!browser || event.sender !== browser.webContents || event.senderFrame !== browser.webContents.mainFrame) throw new Error('잘못된 출처');
     const valid = mode === 'demo' ? event.senderFrame.url === pathToFileURL(demoPath).href : navigationAllowed(event.senderFrame.url, profile?.hosts ?? []);
@@ -140,4 +159,4 @@ void app.whenReady().then(async () => {
 }).catch(() => { dialog.showErrorBox('실행 실패', '데이터베이스 또는 앱 초기화 실패. 기존 데이터 파일은 삭제하지 마세요.'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => { store?.close(); if (ocrWorker) void ocrWorker.terminate(); });
+app.on('will-quit', () => { if (chromeBridge) void chromeBridge.close(); store?.close(); if (ocrWorker) void ocrWorker.terminate(); });

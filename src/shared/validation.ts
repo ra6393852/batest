@@ -3,7 +3,7 @@ const id = z.string().trim().min(1).max(120).regex(/^[\p{L}\p{N} _.:/-]+$/u);
 export const observationSchema = z.object({
   roomId: id, roomName: z.string().trim().min(1).max(120), shoeId: id,
   round: z.number().int().min(1).max(1_000_000), outcome: z.enum(['B', 'P', 'T']),
-  confidence: z.number().min(0).max(1), source: z.enum(['dom', 'ocr', 'demo', 'manual']),
+  confidence: z.number().min(0).max(1), source: z.enum(['dom', 'ocr', 'demo', 'manual', 'chrome']),
   historical: z.boolean(), occurredAt: z.iso.datetime().optional(),
 }).strict();
 const selector = z.string().min(1).max(200);

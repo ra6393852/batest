@@ -1,0 +1,8 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><title>Chrome 분석기 연결</title><link rel="stylesheet" href="popup.css"></head><body>
+<h1>바카라 분석기 연결</h1><a class="launch" href="baccarat-analyzer://connect">프로그램 실행</a><p id="status">연결 상태 확인 중</p><p id="error" role="alert"></p>
+<label>앱의 6자리 연결 코드<input id="code" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="처음 한 번 입력"></label><button id="pair">프로그램과 연결</button>
+<hr><button id="grant-tab">현재 바카라 탭 읽기 허용</button>
+<label>추가 제공자 도메인<input id="host" placeholder="주소의 도메인만 입력"></label><button id="grant-host">해당 도메인 읽기 허용</button>
+<p class="note">처음 한 번 연결·탭 읽기를 허용하면 다음부터 Chrome에서 게임에 입장한 뒤 위의 프로그램 실행을 누르세요. 처음 실행할 때 Chrome의 앱 열기 확인을 허용하세요. 앱이 꺼져 있어도 재연결을 자동 시도합니다.</p>
+<p class="note">로그인·베팅 버튼을 조작하지 않습니다. 결과 인식 프로필이 없으면 연결만 하고 게임 기록을 수집하지 않습니다. 게임이 다른 도메인의 iframe이면 해당 제공자 도메인도 별도로 허용해야 합니다.</p>
+<script src="popup.js"></script></body></html>

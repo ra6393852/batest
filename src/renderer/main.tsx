@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { methods, type AnalyzerAPI, type CollectorStatus, type Snapshot, type Outcome } from '../shared/types';
+import { methods, type AnalyzerAPI, type CollectorStatus, type ChromeConnection, type Snapshot, type Outcome } from '../shared/types';
 import { BASE } from '../analysis/engine';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
@@ -11,7 +11,8 @@ const date = (value: string) => new Date(value).toLocaleString('ko-KR');
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [selectedRoom, setRoom] = useState<string>(), [selectedShoe, setShoe] = useState<string>();
-  const [status, setStatus] = useState<CollectorStatus>({ state: 'idle', message: '사이트 수집 미검증 · 테스트 화면에서 분석 흐름을 확인하세요.', history: 'unknown' });
+  const [status, setStatus] = useState<CollectorStatus>({ state: 'idle', message: 'Chrome에서 로그인·에볼루션 접속 후 확장의 프로그램 실행을 누르세요.', history: 'unknown' });
+  const [chrome, setChrome] = useState<ChromeConnection>(), [extensionFolder, setExtensionFolder] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const slot = useRef<HTMLDivElement>(null), request = useRef(0);
   const load = useCallback(async () => {
@@ -21,6 +22,11 @@ function App() {
   }, [selectedRoom, selectedShoe]);
   useEffect(() => { void load(); return window.analyzer.onChange(() => { void load(); }); }, [load]);
   useEffect(() => window.analyzer.onStatus(setStatus), []);
+  useEffect(() => {
+    const update = () => { void window.analyzer.chromeInfo().then(setChrome); }; update();
+    const unsubscribe = window.analyzer.onChrome(setChrome); const timer = setInterval(update, 5000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, []);
   const bounds = useCallback(() => {
     const box = slot.current?.getBoundingClientRect(); if (!box || !browserOpen) return;
     window.analyzer.setBrowserBounds({ x: Math.floor(box.x), y: Math.floor(box.y), width: Math.floor(box.width), height: Math.floor(box.height) });
@@ -35,7 +41,7 @@ function App() {
   return <div className="app">
     <header><div><span className="eyebrow">READ-ONLY ANALYTICS</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <nav>
-      <button disabled={busy} onClick={() => void action(() => open('site'))}>사이트 열기</button>
+      <button disabled={busy} onClick={() => void action(async () => setExtensionFolder(await window.analyzer.chromeExtensionFolder()))}>Chrome 확장 설치 폴더</button>
       <button className="secondary" disabled={busy} onClick={() => void action(() => open('demo'))}>테스트 화면</button>
       <button className="secondary" disabled={busy} onClick={() => void action(() => window.analyzer.importProfile())}>허용된 프로필 가져오기</button>
       {browserOpen && <button className="quiet" onClick={() => void action(async () => { await window.analyzer.closeBrowser(); setBrowserOpen(false); })}>브라우저 닫기</button>}
@@ -44,8 +50,16 @@ function App() {
     {error && <div role="alert" className="error">{error}</div>}
     <main>
       <div className="left-pane">
-        <section className="browser-panel"><div className="panel-title"><h2>게임 브라우저</h2><span>로그인은 직접 · 선택자 없는 자동 수집은 비활성</span></div>
-          <div className="browser-slot" ref={slot}>{!browserOpen && <div className="empty"><div className="empty-symbol">◉</div><h3>결과 기록부터, 근거 있는 비교까지</h3><p>사이트를 열거나 테스트 화면으로 수집·저장·채점을 확인하세요.</p><p>실제 사이트의 iframe·그림장 인식은 아직 검증되지 않았습니다.</p></div>}</div>
+        <section className="browser-panel"><div className="panel-title"><h2>{browserOpen ? '테스트 게임 화면' : 'Chrome 연결'}</h2><span>사이트는 Chrome에서 직접 이용</span></div>
+          <div className="browser-slot" ref={slot}>{!browserOpen && <div className="chrome-panel"><div className="empty-symbol">◉</div>
+            <h3>{chrome?.state === 'connected' ? 'Chrome에 연결되었습니다' : 'Chrome 확장에서 프로그램 실행을 누르세요'}</h3>
+            <p data-testid="chrome-status">{chrome?.message ?? '연결 상태 확인 중'}</p>
+            {chrome?.pairingCode && <div className="pairing"><span>처음 한 번 확장에 입력할 연결 코드</span><strong data-testid="pairing-code">{chrome.pairingCode}</strong></div>}
+            <ol><li>위의 확장 설치 폴더를 엽니다.</li><li>Chrome의 <b>chrome://extensions</b>에서 개발자 모드를 켜고 <b>압축해제된 확장 프로그램 로드</b>로 해당 폴더를 선택합니다.</li><li>바카라 탭에서 확장 아이콘을 눌러 연결 코드와 <b>현재 바카라 탭 읽기 허용</b>을 처음 한 번 설정합니다.</li></ol>
+            {extensionFolder && <p className="folder-path">확장 폴더: {extensionFolder}</p>}
+            <p className="note">다음부터는 Chrome 로그인 → 에볼루션 방 입장 → 확장 아이콘의 프로그램 실행으로 자동 재연결합니다. 실제 방·회차·그림장 결과 인식은 허용된 프로필 검증이 필요합니다. 연결됨 표시만으로 자동 수집이 검증된 것은 아닙니다.</p>
+            {chrome?.paired && <button className="quiet" onClick={() => void action(() => window.analyzer.chromeReset())}>Chrome 연결 재설정</button>}
+          </div>}</div>
         </section>
         <section className="forecast-panel"><div className="panel-title"><h2>다음 회차 추정</h2><span>{latest ? `${latest + 1}회차 · 기록 범위 ${latest}회차까지` : '결과 기록 대기'}</span></div>
           <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>

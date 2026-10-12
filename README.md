@@ -2,11 +2,28 @@
 
 Windows 10/11용 **읽기 전용** 바카라 결과 기록·통계 비교 Electron 앱입니다. React/TypeScript, 로컬 SQLite, 로컬 텍스트 OCR, electron-builder를 사용합니다. 현재 연결된 저장소 `ra6393852/batest`에서 개발합니다.
 
-**실제 사이트 자동 수집은 아직 완성되지 않았습니다.** 네트워크 설정 변경 후 `https://box-1515.com` 공개 페이지의 HTTPS 200 응답(제목 BOX)을 확인했습니다. 이는 Electron 내장 브라우저 및 로그인 이후 게임 화면 동작을 검증한 것은 아닙니다. 로그인, 실제 방/회차 인식, iframe/색상 그림장 판독은 미검증입니다. 실제 사이트용 어댑터를 추측해 활성화하지 않습니다.
+0.2.0부터 사이트 로그인·에볼루션 접속은 **일반 Chrome**에서 수행합니다. Chrome 확장의 **프로그램 실행** 버튼이 설치된 분석기를 열고 로컬 연결을 자동으로 다시 맺습니다. 기존 내장 브라우저의 제공자 리디렉션 차단에 의존하지 않습니다.
+
+**실제 에볼루션 결과 자동 인식은 아직 미검증입니다.** Chrome 연결과 결과 인식은 별개이며, 허용된 방·슈·회차·결과 프로필이 없으면 사이트 데이터를 수집하지 않습니다. 로그인 정보나 Chrome 쿠키를 분석기로 가져오지 않습니다.
+
+## 설치 후 사용: Chrome → 프로그램 실행
+
+처음 한 번:
+
+1. **0.2.0 설치 EXE**로 앱을 설치하고 실행합니다. 이전 버전에는 Chrome 연결이 없습니다.
+2. 앱의 **Chrome 확장 설치 폴더**를 누릅니다.
+3. Chrome에서 `chrome://extensions`를 열어 개발자 모드를 켜고 **압축해제된 확장 프로그램 로드**로 그 폴더를 선택합니다. 확장을 도구 모음에 고정합니다.
+4. 바카라 탭에서 확장 아이콘을 누르고, 앱에 표시된 **6자리 연결 코드**를 입력해 **프로그램과 연결**을 누릅니다.
+5. **현재 바카라 탭 읽기 허용**을 누릅니다. 게임이 다른 도메인의 iframe에 있으면 해당 제공자 도메인도 개별적으로 허용합니다. 인증된 전체 로그인 링크는 입력하지 않습니다.
+
+이후에는 **Chrome에서 로그인 → 에볼루션 방 입장 → 바카라 분석기 확장 아이콘 → 프로그램 실행**만 누릅니다. 첫 실행 시 Chrome의 외부 앱 열기 확인이 나올 수 있습니다. 이미 실행 중이면 기존 앱 창을 앞으로 가져옵니다. 확장은 앱 재시작 후 자동 재연결하며 Chrome 서비스 워커가 쉬고 있으면 최대 약 30초 걸릴 수 있습니다.
+
+연결이 성공해도 **결과 인식 프로필 미설정**으로 표시되면 아직 실제 통계를 수집하는 상태가 아닙니다. 실제 제공자가 허용한 결과 인식 프로필을 검증해 가져와야 합니다. 자동 수집이 검증됐다고 표시하거나 샘플 데이터를 실제 결과로 대체하지 않습니다.
 
 ## 사용 가능한 기능
 
-- Electron 내장 브라우저와 한국어 대시보드. 로그인은 사용자가 직접 수행합니다.
+- 한국어 대시보드, Chrome 확장, 사용자별 1회 연결 및 자동 재연결.
+- 확장의 프로그램 실행 버튼과 Windows `baccarat-analyzer://connect` 연결.
 - **로컬 테스트 화면**에서 방·슈·회차·B/P/T를 영역 지정 없이 자동 판독.
 - 명시적 DOM 마커 기반 수집 어댑터, 허용된 JSON 프로필 가져오기.
 - 92% 미만 인식 신뢰도는 확인 대기. 중복 결과 방지와 충돌 거절.
@@ -16,7 +33,7 @@ Windows 10/11용 **읽기 전용** 바카라 결과 기록·통계 비교 Electr
 - B/P/T 출현 비율, 연속·최장 연속·전환 빈도, 비드로드와 CSV 내보내기.
 - 로컬 영어 OCR 모델과 자동 선택자 기반 결과 텍스트 영역 인식 도구. 실제 사이트에 대한 OCR은 미검증.
 
-자동 베팅, 베팅 클릭/금액 입력, 비밀번호 별도 수집, 보안 우회, 결과 변경 기능은 없습니다. Chrome 확장 프로그램으로 수집 모듈을 재사용할 수 있게 분리했지만 확장 프로그램 자체와 연결 브리지는 아직 구현하지 않았습니다.
+자동 베팅, 베팅 클릭/금액 입력, 비밀번호·쿠키 별도 수집, 보안 우회, 결과 변경 기능은 없습니다. 로컬 연결은 `127.0.0.1:38741`에만 열리며 사용자 연결 코드로 인증한 확장만 수집 데이터를 전달합니다. Chrome의 사이트 읽기 권한은 선택한 HTTPS 도메인별로 처음 한 번 허용합니다.
 
 ## 실행
 
@@ -25,6 +42,7 @@ Windows 10/11 x64에 Node.js 24 LTS와 Git을 설치한 뒤 저장소 루트에�
 ```powershell
 npm ci
 npm run setup:electron
+npx --no-install playwright install chromium
 npm run build
 npm start
 ```
@@ -70,15 +88,16 @@ Windows에서:
 ```powershell
 npm ci
 npm run setup:electron
+npx --no-install playwright install chromium
 npm test
 npm run test:desktop
 npm run dist:win
 ```
 
-생성 위치: `release/Baccarat-Live-Analyzer-0.1.0-x64-Setup.exe`.
+생성 위치: `release/Baccarat-Live-Analyzer-0.2.0-x64-Setup.exe`. Chrome 확장 파일은 앱의 `resources/chrome-extension`에 함께 설치합니다.
 
 [.github/workflows/windows.yml](.github/workflows/windows.yml)은 PR/main push/수동 실행에서 단위 테스트, 데스크톱 테스트, x64 NSIS 빌드, 설치 EXE의 무인 설치와 설치된 앱의 통합 테스트를 수행합니다. 설치 파일은 `baccarat-windows-x64-installer` 아티팩트로 보관합니다. 코드 서명 인증서는 설정하지 않았으므로 초기 설치 파일은 미서명입니다. 사용자 PC의 실제 사이트 로그인·게임 수집은 별도 검증이 필요합니다. 검사 결과는 [docs/validation.md](docs/validation.md)와 PR checks에서 확인할 수 있습니다.
 
-분석 DB는 Windows `%APPDATA%/baccarat-live-analyzer/baccarat.sqlite`에 저장합니다(Electron `userData`, 개발/패키징 이름에 따라 상위 폴더명이 다를 수 있음). 앱을 닫은 뒤 DB를 백업하세요. 삭제·제거 시 기존 분석 데이터를 자동 삭제하지 않습니다. 사이트의 로그인 세션은 Electron 브라우저 세션에만 보관하며 분석 DB에는 저장하지 않습니다.
+분석 DB는 Windows `%APPDATA%/baccarat-live-analyzer/baccarat.sqlite`에 저장합니다(Electron `userData`, 개발/패키징 이름에 따라 상위 폴더명이 다를 수 있음). 기존 버전의 DB는 유지합니다. 앱을 닫은 뒤 DB를 백업하세요. Chrome 연결 인증은 별도 로컬 파일과 확장 저장소에 보관하며 로그인 비밀번호·쿠키·게임 세션 URL은 저장하지 않습니다. 새 방식의 사이트 로그인은 일반 Chrome에만 남습니다.
 
 실제 사이트 연결 조건, OCR 한계, 예측의 시간 검증은 [docs/architecture.md](docs/architecture.md)에 정리했습니다.

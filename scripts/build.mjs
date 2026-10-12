@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import { build as viteBuild } from 'vite';
-import { mkdir, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile, cp } from 'node:fs/promises';
 await build({
   entryPoints: ['src/main/index.ts'], bundle: true, platform: 'node', format: 'cjs',
   target: 'node22', outfile: 'dist/main/index.cjs', external: ['electron', 'sql.js', 'tesseract.js'],
@@ -17,3 +17,8 @@ await build({
 await viteBuild();
 await mkdir('dist/fixtures', { recursive: true });
 await copyFile('tests/fixtures/table.html', 'dist/fixtures/table.html');
+await cp('extension', 'dist/extension', { recursive: true });
+await build({
+  entryPoints: { background: 'src/extension/background.ts', content: 'src/extension/content.ts', popup: 'src/extension/popup.ts' },
+  bundle: true, platform: 'browser', format: 'iife', target: 'chrome120', outdir: 'dist/extension',
+});

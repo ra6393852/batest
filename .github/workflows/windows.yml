@@ -17,6 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run setup:electron
+      - run: npx --no-install playwright install chromium
       - run: npm test
       - run: npm run test:desktop
       - run: npm run dist:win
@@ -32,6 +33,8 @@ jobs:
           $env:DESKTOP_TEST_EXECUTABLE = Join-Path $installDir 'Baccarat Live Analyzer.exe'
           $env:DESKTOP_TEST_OCR_RESOURCES = Join-Path $installDir 'resources/ocr'
           if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Installed executable missing' }
+          $protocol = (Get-ItemProperty 'Registry::HKEY_CLASSES_ROOT\baccarat-analyzer\shell\open\command').'(default)'
+          if (-not $protocol.Contains('Baccarat Live Analyzer.exe')) { throw 'Chrome launch protocol not registered' }
           npx --no-install playwright test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

@@ -5,7 +5,7 @@ export type Method = typeof methods[number];
 export type Probabilities = Record<Outcome, number>;
 export interface Observation {
   roomId: string; roomName: string; shoeId: string; round: number; outcome: Outcome;
-  confidence: number; source: 'dom' | 'ocr' | 'demo' | 'manual'; historical: boolean;
+  confidence: number; source: 'dom' | 'ocr' | 'demo' | 'manual' | 'chrome'; historical: boolean;
   occurredAt?: string;
 }
 export interface GameResult extends Observation { id: string; recordedAt: string }
@@ -44,6 +44,10 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
+  chromeInfo(): Promise<ChromeConnection>;
+  chromeReset(): Promise<void>;
+  chromeExtensionFolder(): Promise<string>;
+  onChrome(callback: (status: ChromeConnection) => void): () => void;
   snapshot(roomId?: string, shoeId?: string): Promise<Snapshot>;
   open(mode: 'site' | 'demo'): Promise<void>;
   closeBrowser(): Promise<void>;
@@ -53,4 +57,8 @@ export interface AnalyzerAPI {
   setBrowserBounds(bounds: { x: number; y: number; width: number; height: number }): void;
   onChange(callback: () => void): () => void;
   onStatus(callback: (status: CollectorStatus) => void): () => void;
+}
+export interface ChromeConnection {
+  state: 'waiting' | 'connected' | 'error'; paired: boolean; pairingCode: string | null;
+  tabs: number; message: string;
 }

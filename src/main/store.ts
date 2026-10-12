@@ -1,6 +1,7 @@
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import { existsSync, readFileSync, mkdirSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, unlinkSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { analyze, analyzeTwoAhead, statistics } from '../analysis/engine';
 import { observationsSchema } from '../shared/validation';
@@ -44,7 +45,8 @@ export class AnalyzerStore {
   private constructor(private sql: SqlJsStatic, private db: Database, private file: string,
     private clock: () => Date) {}
   static async open(file: string, clock = () => new Date()) {
-    const sql = await initSqlJs({ locateFile: () => require.resolve('sql.js/dist/sql-wasm.wasm') });
+    const moduleRequire = typeof require === 'function' ? require : createRequire(join(process.cwd(), 'package.json'));
+    const sql = await initSqlJs({ locateFile: () => moduleRequire.resolve('sql.js/dist/sql-wasm.wasm') });
     const db = new sql.Database(existsSync(file) ? readFileSync(file) : undefined);
     const version = db.exec('PRAGMA user_version')[0]?.values[0][0] ?? 0;
     if (Number(version) > 1) { db.close(); throw new Error('지원되지 않는 DB 버전입니다.'); }

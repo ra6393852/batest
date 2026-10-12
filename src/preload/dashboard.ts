@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
+  chromeInfo: () => ipcRenderer.invoke('chrome:info'),
+  chromeReset: () => ipcRenderer.invoke('chrome:reset'),
+  chromeExtensionFolder: () => ipcRenderer.invoke('chrome:extension-folder'),
+  onChrome: callback => { const listener = (_event: unknown, status: Parameters<typeof callback>[0]) => callback(status); ipcRenderer.on('chrome:changed', listener); return () => ipcRenderer.removeListener('chrome:changed', listener); },
   snapshot: (roomId, shoeId) => ipcRenderer.invoke('analyzer:snapshot', roomId, shoeId),
   open: mode => ipcRenderer.invoke('browser:open', mode),
   closeBrowser: () => ipcRenderer.invoke('browser:close'),

@@ -63,7 +63,9 @@ async function connect() {
 }
 chrome.runtime.onMessage.addListener((raw, sender, reply) => {
   if (sender.id !== chrome.runtime.id) return;
-  const ui = !sender.tab && Boolean(sender.url?.startsWith(chrome.runtime.getURL('')));
+  // The same extension UI may be opened as a popup or an ordinary Chrome tab.
+  // Origin, rather than the presence of sender.tab, identifies our privileged UI.
+  const ui = Boolean(sender.url?.startsWith(chrome.runtime.getURL('')));
   if (raw?.type === 'state' && ui) {
     reply({ status, error: latestError, connected: authenticated, profileHosts: profile?.hosts ?? [] }); return;
   }

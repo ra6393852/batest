@@ -9,7 +9,9 @@ bash scripts/test-cloud.sh
 
 설치 스크립트는 고정 lockfile의 `npm ci`, 공식 체크섬으로 Electron 다운로드, TypeScript/React 빌드를 수행합니다. 필요한 경우 서명 검증된 Debian trixie 저장소에서 Xvfb를 내려받아 `/workspace/.cache/desktop-runtime`에 풉니다. 시스템 경로를 수정하거나 루트 설치를 하지 않습니다. 캐시는 `/workspace/.cache` 아래에 두며 설치 스크립트에 비밀값을 저장하지 않습니다.
 
-이 클라우드 컨테이너는 사용자 네임스페이스를 중첩 생성할 수 없어 Chromium의 Linux OS sandbox가 시작되지 않습니다. **로컬 fixture 전용** 데스크톱 테스트는 `ALLOW_UNSANDBOXED_FIXTURE_TEST=1`과 `--smoke-test`로 실행합니다. 이 모드에서는 실제 사이트를 열 수 없고 테스트 DB/세션을 따로 사용합니다. 일반 앱 실행과 Windows CI에 `--no-sandbox`를 추가하지 마세요. 파일 sandbox, TLS, 패키지 서명/체크섬 검증은 그대로 유지합니다.
+이 클라우드 컨테이너는 사용자 네임스페이스를 중첩 생성할 수 없어 Chromium의 Linux OS sandbox가 시작되지 않습니다. **로컬 fixture 전용** 데스크톱 테스트는 `ALLOW_UNSANDBOXED_FIXTURE_TEST=1`과 `--smoke-test`로 실행합니다. 이 모드에서는 실제 사이트를 열 수 없고 테스트 DB/세션을 따로 사용합니다. 일반 앱 실행에 `--no-sandbox`를 추가하지 마세요. 파일 sandbox, TLS, 패키지 서명/체크섬 검증은 그대로 유지합니다.
+
+0.2.0의 cloud 테스트는 단위 테스트 37개와 Electron fixture 테스트를 실행합니다. 시스템 Chromium 154의 확장 시작은 이 컨테이너에서 실패하고 Playwright가 맞춘 Chrome 145 다운로드는 네트워크 정책으로 차단돼, Chrome 확장 연결·재연결은 Windows CI의 실제 Chrome for Testing에서 검증합니다. 이를 Linux에서 통과했다고 표시하지 않습니다. Windows CI는 소스 앱과 설치된 EXE 모두에서 Electron 및 Chrome 확장 테스트를 실행합니다.
 
 파일·의존성은 환경 스냅샷에 남지만 Xvfb와 Electron 프로세스는 남지 않습니다. 테스트 스크립트가 자기 Xvfb를 새로 시작하고 종료합니다. 실제 앱 사용은 Windows에서 `npm start` 또는 설치 EXE로 수행합니다. Linux 패키지는 개발 검증용이며 배포 대상이 아닙니다.
 

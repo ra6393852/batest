@@ -1,0 +1,89 @@
+{
+  "name": "baccarat-live-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only baccarat result recording and statistical comparison",
+  "author": "Baccarat Live Analyzer contributors",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "setup:electron": "node node_modules/electron/install.js",
+    "typecheck": "tsc --noEmit",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:desktop": "npm run build && playwright test",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "pack:linux": "npm run build && electron-builder --linux --dir"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sql.js": "1.14.2",
+    "tesseract.js": "7.0.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@types/jsdom": "30.0.0",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/sql.js": "1.4.9",
+    "@vitejs/plugin-react": "5.1.4",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.27.3",
+    "jsdom": "28.0.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vitest": "4.0.18"
+  },
+  "build": {
+    "appId": "com.baccarat.liveanalyzer",
+    "productName": "Baccarat Live Analyzer",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "extraResources": [
+      {
+        "from": "node_modules/@tesseract.js-data/eng/4.0.0",
+        "to": "ocr/eng"
+      },
+      {
+        "from": "node_modules/tesseract.js-core",
+        "to": "ocr/node_modules/tesseract.js-core"
+      },
+      {
+        "from": "dist/main/ocr-worker.cjs",
+        "to": "ocr/worker.cjs"
+      }
+    ]
+  }
+}

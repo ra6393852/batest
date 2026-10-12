@@ -204,6 +204,12 @@ cython_debug/
 # .vscode/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
+node_modules/
+release/
+test-results/
+playwright-report/
+*.sqlite
+*.sqlite.tmp
 
 # Ruff stuff:
 .ruff_cache/

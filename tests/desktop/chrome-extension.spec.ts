@@ -25,9 +25,10 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
   try {
     const executable = process.env.CHROME_TEST_EXECUTABLE ?? (process.platform === 'linux' && existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
     context = await chromium.launchPersistentContext(join(folder, 'chrome-data'), {
-      executablePath: executable, channel: 'chromium', headless: false,
+      executablePath: executable, channel: 'chromium', headless: process.platform === 'linux',
       timeout: 15000,
       ignoreDefaultArgs: ['--disable-extensions'],
+      env: { ...process.env, XDG_CACHE_HOME: join(folder, 'cache'), XDG_CONFIG_HOME: join(folder, 'config'), MESA_SHADER_CACHE_DIR: join(folder, 'mesa') },
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])],
     });
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');

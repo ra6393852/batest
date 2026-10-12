@@ -19,7 +19,7 @@ jobs:
       - run: npm run setup:electron
       - run: npx --no-install playwright install chromium
       - run: npm test
-      - run: npm run test:desktop
+      - run: npm run test:desktop -- --reporter=list,github
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -35,7 +35,7 @@ jobs:
           if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Installed executable missing' }
           $protocol = (Get-ItemProperty 'Registry::HKEY_CLASSES_ROOT\baccarat-analyzer\shell\open\command').'(default)'
           if (-not $protocol.Contains('Baccarat Live Analyzer.exe')) { throw 'Chrome launch protocol not registered' }
-          npx --no-install playwright test
+          npx --no-install playwright test --reporter=list,github
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:

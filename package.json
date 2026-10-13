@@ -1,6 +1,6 @@
 {
   "name": "baccarat-live-analyzer",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Read-only baccarat result recording and statistical comparison",
   "author": "Baccarat Live Analyzer contributors",
@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:desktop": "npm run build && playwright test",
-    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:win": "npm run build && electron-builder --win zip --x64",
     "pack:linux": "npm run build && electron-builder --linux --dir"
   },
   "dependencies": {
@@ -61,19 +61,19 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "zip",
           "arch": [
             "x64"
           ]
         }
       ],
-      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Setup.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false,
-      "include": "packaging/installer.nsh"
+      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Portable.${ext}",
+      "extraFiles": [
+        {
+          "from": "packaging/portable-readme.txt",
+          "to": "사용방법.txt"
+        }
+      ]
     },
     "extraResources": [
       {

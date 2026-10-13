@@ -44,7 +44,8 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
     const extensionId = new URL(worker.url()).hostname;
     const popup = await context.newPage(); await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-    await expect(popup.getByRole('link', { name: '프로그램 실행' })).toHaveAttribute('href', 'baccarat-analyzer://connect');
+    await expect(popup.getByText('무설치 폴더의')).toContainText('Baccarat Live Analyzer.exe');
+    await expect(popup.locator('a[href^="baccarat-analyzer:"]')).toHaveCount(0);
     await popup.locator('#code').fill(bridge.info().pairingCode!);
     await popup.getByRole('button', { name: '프로그램과 연결' }).click();
     await expect.poll(() => bridge.info().state).toBe('connected');

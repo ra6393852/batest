@@ -1,5 +1,7 @@
 # Linux 클라우드 개발·검증
 
+0.4.2의 Windows 배포는 무설치 ZIP입니다. `npm run dist:win`은 x64 ZIP을 만들고, Windows CI는 압축을 푼 EXE에서 5개 데스크톱 테스트를 실행합니다. 현재 Linux 검증은 단위 테스트 64개와 Electron 테스트 4개입니다. 아래 버전별 설치 EXE/NSIS 설명은 과거 검증 기록입니다.
+
 선택된 `/workspace/batest` 체크아웃을 그대로 사용합니다. 클라우드 작업은 이미 격리돼 있으므로 별도의 Git worktree를 만들지 않습니다.
 
 ```bash

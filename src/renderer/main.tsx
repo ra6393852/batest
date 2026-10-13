@@ -128,7 +128,7 @@ function App() {
         {simulation && <section className="simulation-panel"><h2>과거 기록 시뮬레이션</h2><p data-testid="simulation-count">{simulation.stats.total}개 기록 · 동일 회차 {simulation.stats.comparisons}개 비교</p><div className="table-scroll"><table><thead><tr><th>방식</th><th>적중률</th><th>O/X</th><th>Brier</th><th>현재 기록 다음 추정</th></tr></thead><tbody>{methods.map(method => { const a = simulation.stats.accuracy[method].all, next = simulation.next.find(model => model.method === method)!; return <tr key={method}><th>{method}</th><td>{percent(a.rate)}</td><td>{a.correct} / {a.count - a.correct}</td><td>{a.brier?.toFixed(3) ?? '—'}</td><td className={next.pick}>{next.pick} · {percent(next.probabilities[next.pick])}</td></tr>; })}</tbody></table></div><p className="note">과거 데이터 시험 결과입니다. 실제 다음 판 확률이나 실시간 검증 결과로 표시하지 않습니다.</p></section>}
         <section className="browser-panel"><div className="panel-title"><h2>{browserOpen ? '테스트 게임 화면' : 'Chrome 연결'}</h2><span>사이트는 Chrome에서 직접 이용</span></div>
           <div className="browser-slot" ref={slot}>{!browserOpen && <div className="chrome-panel"><div className="empty-symbol">◉</div>
-            <h3>{chrome?.state === 'connected' ? 'Chrome 연결됨 · 게임 결과 인식 상태를 확인하세요' : 'Chrome 확장에서 프로그램 실행을 누르세요'}</h3>
+            <h3>{chrome?.state === 'connected' ? 'Chrome 연결됨 · 게임 결과 인식 상태를 확인하세요' : 'Chrome 확장에서 연결 코드를 입력하세요'}</h3>
             <p data-testid="chrome-status">{chrome?.message ?? '연결 상태 확인 중'}</p>
             {chrome?.state === 'connected' && <>
               {!chrome.profileConfigured && <p className="recognition-warning" data-testid="recognition-warning">실제 결과 인식 프로필 미설정 · 현재 게임 결과를 자동 수집하지 않습니다.</p>}
@@ -141,7 +141,7 @@ function App() {
             {chrome?.pairingCode && <div className="pairing"><span>처음 한 번 확장에 입력할 연결 코드</span><strong data-testid="pairing-code">{chrome.pairingCode}</strong></div>}
             <ol><li>위의 확장 설치 폴더를 엽니다.</li><li>Chrome의 <b>chrome://extensions</b>에서 개발자 모드를 켜고 <b>압축해제된 확장 프로그램 로드</b>로 해당 폴더를 선택합니다.</li><li>바카라 탭에서 확장 아이콘을 눌러 연결 코드와 <b>현재 바카라 탭 읽기 허용</b>을 처음 한 번 설정합니다.</li></ol>
             {extensionFolder && <p className="folder-path">확장 폴더: {extensionFolder}</p>}
-            <p className="note">다음부터는 Chrome 로그인 → 에볼루션 방 입장 → 확장 아이콘의 프로그램 실행으로 자동 재연결합니다. 실제 방·회차·그림장 결과 인식은 허용된 프로필 검증이 필요합니다. 연결됨 표시만으로 자동 수집이 검증된 것은 아닙니다.</p>
+            <p className="note">무설치 폴더의 Baccarat Live Analyzer.exe를 실행하면 기존 Chrome 확장과 자동 재연결합니다. 실제 방·회차·그림장 결과 인식은 허용된 프로필 검증이 필요합니다. 연결됨 표시만으로 자동 수집이 검증된 것은 아닙니다.</p>
             {chrome?.paired && <button className="quiet" onClick={() => void action(() => window.analyzer.chromeReset())}>Chrome 연결 재설정</button>}
           </div>}</div>
         </section>

@@ -23,27 +23,25 @@ jobs:
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Install and validate packaged Windows app
+      - name: Extract and validate portable Windows app
         shell: pwsh
         run: |
-          $installer = Get-ChildItem release/*Setup.exe | Select-Object -First 1
-          $installDir = Join-Path $env:RUNNER_TEMP 'baccarat-installed'
-          $process = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
-          $env:DESKTOP_TEST_EXECUTABLE = Join-Path $installDir 'Baccarat Live Analyzer.exe'
-          $env:DESKTOP_TEST_OCR_RESOURCES = Join-Path $installDir 'resources/ocr'
-          if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Installed executable missing' }
-          try {
-            $protocol = (Get-ItemProperty 'Registry::HKEY_CLASSES_ROOT\baccarat-analyzer\shell\open\command').'(default)'
-            if (-not $protocol.Contains('Baccarat Live Analyzer.exe')) { throw 'Chrome launch protocol not registered' }
-          } catch {
-            Write-Output "::error::Chrome launch registration failed: $($_.Exception.Message)"
-            throw
-          }
+          $archive = Get-ChildItem release/*Portable.zip | Select-Object -First 1
+          if (-not $archive) { throw 'Portable ZIP missing' }
+          $portableDir = Join-Path $env:RUNNER_TEMP 'baccarat-portable'
+          $protocolPath = 'Registry::HKEY_CURRENT_USER\Software\Classes\baccarat-analyzer'
+          $protocolBefore = Test-Path $protocolPath
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $portableDir
+          $env:DESKTOP_TEST_EXECUTABLE = Join-Path $portableDir 'Baccarat Live Analyzer.exe'
+          $env:DESKTOP_TEST_OCR_RESOURCES = Join-Path $portableDir 'resources/ocr'
+          if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Portable executable missing' }
+          if (-not (Test-Path (Join-Path $portableDir '사용방법.txt'))) { throw 'Portable usage guide missing' }
+          if (Get-ChildItem $portableDir -Recurse -Filter '*Setup.exe') { throw 'Installer included in portable ZIP' }
           npx --no-install playwright test --reporter=list,github
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Test-Path $protocolPath) -ne $protocolBefore) { throw 'Portable app changed protocol registration' }
       - uses: actions/upload-artifact@v4
         with:
-          name: baccarat-windows-x64-installer
-          path: release/*Setup.exe
+          name: baccarat-windows-x64-portable
+          path: ${{ runner.temp }}/baccarat-portable/**
           if-no-files-found: error

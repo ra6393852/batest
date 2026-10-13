@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, nativeImage, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, nativeImage, clipboard, type NativeImage, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
@@ -11,6 +11,7 @@ import { ObservationTracker } from '../collector/dom';
 import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
 import { analyzeBeadBitmap } from '../collector/bead-image';
+import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus } from '../shared/types';
 
 let store: AnalyzerStore, window: BrowserWindow, browser: WebContentsView | undefined;
@@ -20,6 +21,14 @@ let ocrBusy = false, ocrTracker = new ObservationTracker();
 let lastOCR = '';
 let chromeBridge: ChromeBridge | undefined;
 const imageImport = new ImageImport();
+function inspectImage(image: NativeImage) {
+  if (image.isEmpty()) throw new Error('이미지가 없습니다. 그림판을 캡처해 복사한 뒤 이미지 붙여넣기를 누르세요.');
+  const { width, height } = image.getSize();
+  if (width * height > 12_000_000) throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
+  const analysis = analyzeBeadBitmap(width, height, image.toBitmap());
+  const crop = image.crop(analysis.bounds);
+  return imageImport.create(analysis, (crop.getSize().width > 900 ? crop.resize({ width: 900 }) : crop).toDataURL());
+}
 const rendererPath = join(__dirname, '../renderer/index.html');
 const demoPath = join(__dirname, '../fixtures/table.html');
 const rendererURL = pathToFileURL(rendererPath).href;
@@ -107,14 +116,33 @@ void app.whenReady().then(async () => {
     if (selected.canceled || !selected.filePaths[0]) return null;
     const file = selected.filePaths[0];
     if (statSync(file).size > 10_000_000) throw new Error('이미지는 최대 10MB까지 읽을 수 있습니다.');
-    const image = nativeImage.createFromBuffer(readFileSync(file));
-    if (image.isEmpty()) throw new Error('PNG/JPG/BMP 이미지를 읽지 못했습니다.');
-    const { width, height } = image.getSize();
-    if (width * height > 12_000_000) throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
-    const analysis = analyzeBeadBitmap(width, height, image.toBitmap());
-    const crop = image.crop(analysis.bounds);
-    const preview = (crop.getSize().width > 900 ? crop.resize({ width: 900 }) : crop).toDataURL();
-    return imageImport.create(analysis, preview);
+    return inspectImage(nativeImage.createFromBuffer(readFileSync(file)));
+  });
+  // Explicit user action only. Never read clipboard text/passwords or poll it in the background.
+  ipcMain.handle('image:paste', async event => { local(event);
+    const items = await clipboard.read();
+    for (const item of items) {
+      const type = item.types.find(type => ['image/png', 'image/jpeg', 'image/bmp'].includes(type));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      if (!('arrayBuffer' in blob)) continue;
+      if (blob.size > 10000000) throw new Error('이미지는 최대 10MB까지 읽을 수 있습니다.');
+      return inspectImage(nativeImage.createFromBuffer(Buffer.from(await blob.arrayBuffer())));
+    }
+    throw new Error('클립보드에 이미지가 없습니다. 그림판을 캡처해 복사한 뒤 이미지 붙여넣기를 누르세요.');
+  });
+  ipcMain.handle('image:sequence', (event, raw) => { local(event);
+    const outcomes = parseSequence(z.string().max(7000).parse(raw));
+    return imageImport.create({ outcomes, format: 'bead', tieAfter: [], confidence: 1, bounds: { x: 0, y: 0, width: 0, height: 0 },
+      warnings: ['직접 입력한 과거 기록입니다. 원본의 B/P/T 순서와 방·슈·시작 번호를 확인하세요. 사후 O/X 채점하지 않습니다.'] }, '');
+  });
+  ipcMain.handle('analyzer:manual-result', (event, raw) => { local(event);
+    const input = z.object({ roomId: z.string().min(1).max(120), shoeId: z.string().min(1).max(120), round: z.number().int().min(1).max(1000000), outcome: z.enum(['B', 'P', 'T']) }).strict().parse(raw);
+    const snapshot = store.snapshot(input.roomId, input.shoeId);
+    if (snapshot.roomId !== input.roomId || snapshot.shoeId !== input.shoeId || input.round !== (snapshot.results.at(-1)?.round ?? 0) + 1) throw new Error('방·슈·다음 회차가 변경됐습니다. 현재 기록을 확인하세요.');
+    if (snapshot.results.every(result => result.source === 'demo')) throw new Error('테스트 방에는 실제 결과를 추가하지 않습니다. 새 분석 방에 기록을 저장하세요.');
+    store.ingest([{ ...input, roomName: snapshot.rooms.find(room => room.id === input.roomId)!.name, confidence: 1, source: 'manual', historical: false }]);
+    changed(); status('collecting', `수동 결과 ${input.round}회차 ${input.outcome} 기록 · 사전 예측 채점`, 'visible-only');
   });
   ipcMain.handle('image:save', (event, raw) => { local(event);
     const result = imageImport.save(raw, store); changed();

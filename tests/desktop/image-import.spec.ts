@@ -2,6 +2,7 @@ import { _electron as electron, test, expect, type ElectronApplication } from '@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { exampleOutcomes, smallRoadBitmap } from '../fixtures/road-bitmap';
 
 test('image file preview, manual correction, confirmation, deduplication and restart persistence', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'baccarat-image-')); let app: ElectronApplication | undefined;
@@ -42,6 +43,13 @@ test('image file preview, manual correction, confirmation, deduplication and res
     expect(snapshot.results[0]).toMatchObject({ outcome: 'P', round: 10, source: 'manual', historical: true });
     expect(snapshot.results.at(-1)?.round).toBe(17); expect(snapshot.stats.comparisons).toBe(0);
     expect(snapshot.forecasts.filter(row => row.targetRound === 18)).toHaveLength(4);
+    await page.getByRole('button', { name: '뱅커 결과 기록', exact: true }).click();
+    await expect(page.getByTestId('total-results')).toHaveText('9');
+    const live = await page.evaluate(() => window.analyzer.snapshot());
+    expect(live.results.at(-1)).toMatchObject({ round: 18, outcome: 'B', historical: false, source: 'manual' });
+    expect(live.stats.comparisons).toBe(1); expect(live.forecasts.filter(f => f.targetRound === 18 && f.horizon === 1).every(f => f.mark === 'O' || f.mark === 'X')).toBe(true);
+    await expect(page.evaluate(input => window.analyzer.appendManual(input), { roomId: live.roomId!, shoeId: live.shoeId!, round: 18, outcome: 'P' as const })).rejects.toThrow('다음 회차');
+    expect((await page.evaluate(() => window.analyzer.snapshot())).results.at(-1)?.outcome).toBe('B');
     await page.getByRole('button', { name: '그림판 이미지 분석', exact: true }).click();
     await expect(page.getByTestId('image-detected-count')).toBeVisible();
     await page.getByLabel('이미지 결과 1', { exact: true }).selectOption('P'); await confirmed.check();
@@ -49,7 +57,49 @@ test('image file preview, manual correction, confirmation, deduplication and res
     await expect(page.getByTestId('image-save-status')).toContainText('새 기록 0개');
     await page.screenshot({ path: 'test-results/image-dashboard.png' });
     await app.close(); app = await launch(); const reopened = await app.firstWindow();
-    await expect(reopened.getByTestId('total-results')).toHaveText('8');
+    await expect(reopened.getByTestId('total-results')).toHaveText('9');
     expect((await reopened.evaluate(() => window.analyzer.snapshot())).results[0].outcome).toBe('P');
+  } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('small grey-grid file and clipboard reads, tie confirmation, simulation and manual start', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'baccarat-small-road-')); let app: ElectronApplication | undefined;
+  try {
+    app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
+      args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: '비드로드 전사 예시 38회' }).click();
+    await page.getByRole('button', { name: '시뮬레이션 실행', exact: true }).click();
+    await expect(page.getByTestId('simulation-count')).toHaveText('38개 기록 · 동일 회차 28개 비교');
+    expect((await page.evaluate(() => window.analyzer.snapshot())).results).toHaveLength(0);
+    await page.getByRole('button', { name: '입력 기록 확인', exact: true }).click();
+    await expect(page.getByTestId('image-detected-count')).toHaveText('38개 결과 인식 추정');
+    await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '확인한 그림판 기록 저장' }).click();
+    await expect(page.getByTestId('total-results')).toHaveText('38');
+    const bead = smallRoadBitmap('bead', true);
+    const png = await app.evaluate(({ nativeImage }, input) => nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG().toString('base64'), { width: bead.width, height: bead.height, bitmap: Buffer.from(bead.bitmap).toString('base64') });
+    const file = join(folder, 'small-bead.png'); writeFileSync(file, Buffer.from(png, 'base64'));
+    await app.evaluate(({ dialog }, filePath) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filePath] }); }, file);
+    await page.getByRole('button', { name: '그림판 이미지 분석', exact: true }).click();
+    await expect(page.getByTestId('image-detected-count')).toHaveText('38개 결과 인식 추정');
+    for (let i = 0; i < exampleOutcomes.length; i++) await expect(page.getByLabel(`이미지 결과 ${i+1}`, { exact: true })).toHaveValue(exampleOutcomes[i]);
+    const road = smallRoadBitmap('big-road');
+    await app.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
+      const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
+    }, { width: road.width, height: road.height, bitmap: Buffer.from(road.bitmap).toString('base64') });
+    await page.getByRole('button', { name: '이미지 붙여넣기', exact: true }).click();
+    await expect(page.getByTestId('image-detected-count')).toHaveText('35개 결과 인식 추정');
+    await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
+    const markers = page.locator('.tie-field input'); await expect(markers).toHaveCount(2);
+    await markers.nth(0).fill('1'); await markers.nth(1).fill('2');
+    await page.getByRole('checkbox').check(); await page.getByRole('button', { name: '확인한 그림판 기록 저장' }).click();
+    await expect(page.getByTestId('total-results')).toHaveText('38');
+    const snapshot = await page.evaluate(() => window.analyzer.snapshot());
+    expect(snapshot.results.map(row => row.outcome)).toEqual(exampleOutcomes); expect(snapshot.stats.counts).toEqual({ B: 19, P: 16, T: 3 });
+    await page.screenshot({ path: 'test-results/small-road-dashboard.png' });
+    await page.getByRole('button', { name: '플레이어 결과 기록', exact: true }).click();
+    await expect(page.getByTestId('total-results')).toHaveText('39');
+    expect((await page.evaluate(() => window.analyzer.snapshot())).stats.comparisons).toBe(1);
   } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
 });

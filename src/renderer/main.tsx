@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { methods, type AnalyzerAPI, type CollectorStatus, type ChromeConnection, type Snapshot, type Outcome, type ImageReview } from '../shared/types';
 import { BASE } from '../analysis/engine';
+import { parseSequence, simulateHistory } from '../analysis/simulation';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
 const labels: Record<Outcome, string> = { B: '뱅커', P: '플레이어', T: '타이' };
@@ -15,6 +16,7 @@ function App() {
   const [chrome, setChrome] = useState<ChromeConnection>(), [extensionFolder, setExtensionFolder] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [imageReview, setImageReview] = useState<ImageReview>(), [imageOutcomes, setImageOutcomes] = useState<Outcome[]>([]), [imageConfirmed, setImageConfirmed] = useState(false);
+  const [tieCounts, setTieCounts] = useState<Record<number, string>>({}), [manualSequence, setManualSequence] = useState(''), [simulation, setSimulation] = useState<ReturnType<typeof simulateHistory>>();
   const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
   const slot = useRef<HTMLDivElement>(null), request = useRef(0);
   const load = useCallback(async () => {
@@ -37,20 +39,31 @@ function App() {
     return () => { resize.disconnect(); window.removeEventListener('resize', bounds); }; }, [bounds]);
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(''); try { await fn(); await load(); } catch { setError('작업 실패 · 입력 형식이나 기존 회차 충돌을 확인하세요.'); } finally { setBusy(false); } }
   async function open(mode: 'site' | 'demo') { setBrowserOpen(true); await window.analyzer.open(mode); requestAnimationFrame(bounds); }
-  async function readImage() {
+  async function readImage(paste = false, manual = false) {
     setBusy(true); setError('');
     try {
       if (browserOpen) { await window.analyzer.closeBrowser(); setBrowserOpen(false); }
-      const review = await window.analyzer.analyzeImage();
-      if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setImageConfirmed(false); setImageSaved(''); }
+      const review = manual ? await window.analyzer.reviewSequence(manualSequence) : paste ? await window.analyzer.pasteImage() : await window.analyzer.analyzeImage();
+      if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setTieCounts({}); setImageConfirmed(false); setImageSaved(''); }
     } catch (error) { setError(error instanceof Error ? error.message.split('Error:').at(-1)!.trim() : '그림판 이미지를 읽지 못했습니다.'); }
     finally { setBusy(false); }
   }
+  useEffect(() => {
+    const paste = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!busy && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '') && !target?.isContentEditable) {
+        event.preventDefault(); void readImage(true);
+      }
+    };
+    document.addEventListener('keydown', paste); return () => document.removeEventListener('keydown', paste);
+  }, [busy, browserOpen]);
   async function saveImage() {
     if (!imageReview || !imageConfirmed) return;
     setBusy(true); setError('');
     try {
-      const result = await window.analyzer.saveImage({ reviewId: imageReview.id, roomName: imageRoom, shoeId: imageShoe, startRound: imageStart, outcomes: imageOutcomes });
+      const tiesAfter = Object.entries(tieCounts).filter(([, count]) => Number(count) > 0).map(([index, count]) => ({ index: Number(index), count: Number(count) }));
+      const result = await window.analyzer.saveImage({ reviewId: imageReview.id, roomName: imageRoom, shoeId: imageShoe, startRound: imageStart, outcomes: imageOutcomes, tiesAfter });
+      setManualSequence(imageOutcomes.flatMap((outcome, index) => [outcome, ...Array<Outcome>(Number(tieCounts[index]) || 0).fill('T')]).join(''));
       setRoom(result.roomId); setShoe(result.shoeId); setImageReview(undefined);
       setImageSaved(`새 기록 ${result.added}개 저장 · 중복 기록은 추가하지 않습니다.${result.pending ? ` 충돌 ${result.pending}개는 확인 대기입니다.` : ''}`);
     } catch { setError('저장 실패 · 방 이름·슈·시작 번호를 확인하고, 만료된 이미지는 다시 읽어주세요.'); }
@@ -58,11 +71,14 @@ function App() {
   }
   const s = snapshot?.stats;
   const latest = snapshot?.results.at(-1)?.round;
+  const demoData = Boolean(snapshot?.results.length && snapshot.results.every(result => result.source === 'demo'));
+  const unresolvedTies = imageReview?.tieAfter.some(index => !Number.isInteger(Number(tieCounts[index])) || Number(tieCounts[index]) < 1 || Number(tieCounts[index]) > 20);
   const next = snapshot?.forecasts.filter(f => f.horizon === 1 && f.targetRound === (latest ?? 0) + 1) ?? [];
   return <div className="app">
     <header><div><span className="eyebrow">READ-ONLY ANALYTICS</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <nav>
       <button disabled={busy} onClick={() => void readImage()}>그림판 이미지 분석</button>
+      <button disabled={busy} onClick={() => void readImage(true)}>이미지 붙여넣기</button>
       <button disabled={busy} onClick={() => void action(async () => setExtensionFolder(await window.analyzer.chromeExtensionFolder()))}>Chrome 확장 설치 폴더</button>
       <button className="secondary" disabled={busy || chrome?.state !== 'connected'} onClick={() => void action(async () => { if (!await window.analyzer.chromeOpenPanel()) setError('Chrome 확장 연결을 먼저 확인하세요.'); })}>게임 창 확인</button>
       <button className="secondary" disabled={busy} onClick={() => void action(() => open('demo'))}>테스트 화면</button>
@@ -74,19 +90,26 @@ function App() {
     <main>
       <div className="left-pane">
         {!browserOpen && <section className="image-panel"><div className="panel-title"><h2>그림판 이미지 분석</h2><span>Chrome 연결 없이 사용 가능</span></div>
-          <p className="note">PNG/JPG/BMP의 6행 비드로드를 읽습니다. 결과가 7개 이상인 빨강 B·파랑 P·초록 T의 채워진 원만 지원하며, 빅로드는 지원하지 않습니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
+          <p className="note">파일 선택 또는 이미지 붙여넣기로 비드로드·빅로드 격자를 읽습니다. 비드로드는 B/P/T를, 빅로드는 B/P 흐름을 읽고 초록 타이 표시의 횟수는 직접 확인합니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
           <div className="image-fields"><label>방 이름<input aria-label="이미지 방 이름" value={imageRoom} maxLength={120} onChange={e => setImageRoom(e.target.value)}/></label><label>기록 그룹 / 슈<input aria-label="이미지 슈" value={imageShoe} maxLength={120} onChange={e => setImageShoe(e.target.value)}/></label><label>이미지 첫 결과의 기록 번호<input aria-label="이미지 시작 번호" type="number" min={1} max={999500} value={imageStart} onChange={e => setImageStart(Number(e.target.value))}/></label></div>
           <p className="note">같은 방·슈·시작 번호로 다시 넣으면 중복을 막습니다. 새 슈는 그룹 이름을 바꾸세요. 실제 회차를 모르면 별도 그룹에서 1부터 번호를 부여하세요. 이미지는 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.</p>
+          <details className="manual-input" open><summary>B/P/T 직접 입력 · 시뮬레이션 시작</summary>
+            <textarea aria-label="B/P/T 기록 직접 입력" placeholder="예: B B B P P B T P" value={manualSequence} onChange={e => setManualSequence(e.target.value)} maxLength={7000}/>
+            <div className="manual-actions"><button className="secondary" onClick={() => setManualSequence('BBBPPBBTBPPPBBPPPBPBPBPTTBBPPBBBBPPBBP')}>비드로드 전사 예시 38회</button><button disabled={busy || !manualSequence.trim()} onClick={() => void readImage(false, true)}>입력 기록 확인</button><button disabled={!manualSequence.trim()} onClick={() => { try { setSimulation(simulateHistory(parseSequence(manualSequence))); setError(''); } catch (error) { setError((error as Error).message); } }}>시뮬레이션 실행</button></div>
+            <p className="note">예시는 보내주신 비드로드를 눈으로 전사한 기록이며 원본과 확인이 필요합니다. 시뮬레이션은 처음 10개로 시작해 이후 결과를 하나씩 채점하는 과거 데이터 시험입니다. 실제 실시간 적중률에 합산하지 않습니다.</p>
+          </details>
           {imageSaved && <p role="status" data-testid="image-save-status">{imageSaved}</p>}
           {imageReview && <div className="image-review">
-            <img src={imageReview.preview} alt="자동으로 찾은 비드로드 원본 영역"/>
+            {imageReview.preview && <img src={imageReview.preview} alt="자동으로 찾은 그림판 원본 영역"/>}
+            <p>{imageReview.preview ? imageReview.format === 'bead' ? '비드로드 인식' : '빅로드 인식 · 타이 횟수 확인 필요' : '직접 입력 기록 확인'}</p>
             <p><b data-testid="image-detected-count">{imageOutcomes.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>
-            <div className="image-outcomes">{imageOutcomes.map((outcome, index) => <label key={index}>{imageStart + index}<select aria-label={`이미지 결과 ${index + 1}`} className={outcome} value={outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === index ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select></label>)}</div>
+            <div className="image-outcomes">{imageOutcomes.map((outcome, index) => <label key={index}>{imageStart + index}<select aria-label={`이미지 결과 ${index + 1}`} className={outcome} value={outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === index ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select>{imageReview.tieAfter.includes(index) && <span className="tie-field">초록 타이 횟수<input aria-label={`타이 횟수 ${index + 1}`} type="number" min={1} max={20} placeholder="확인 필요" value={tieCounts[index] ?? ''} onChange={e => { setTieCounts(previous => ({ ...previous, [index]: e.target.value })); setImageConfirmed(false); }}/></span>}</label>)}</div>
             {imageReview.warnings.map(warning => <p className="note" key={warning}>{warning}</p>)}
             <label className="image-confirm"><input type="checkbox" checked={imageConfirmed} onChange={e => setImageConfirmed(e.target.checked)}/>원본의 B/P/T 순서와 방·슈·시작 번호를 확인했습니다.</label>
-            <button disabled={busy || !imageConfirmed || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
+            <button disabled={busy || !imageConfirmed || unresolvedTies || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
           </div>}
         </section>}
+        {simulation && <section className="simulation-panel"><h2>과거 기록 시뮬레이션</h2><p data-testid="simulation-count">{simulation.stats.total}개 기록 · 동일 회차 {simulation.stats.comparisons}개 비교</p><div className="table-scroll"><table><thead><tr><th>방식</th><th>적중률</th><th>O/X</th><th>Brier</th><th>현재 기록 다음 추정</th></tr></thead><tbody>{methods.map(method => { const a = simulation.stats.accuracy[method].all, next = simulation.next.find(model => model.method === method)!; return <tr key={method}><th>{method}</th><td>{percent(a.rate)}</td><td>{a.correct} / {a.count - a.correct}</td><td>{a.brier?.toFixed(3) ?? '—'}</td><td className={next.pick}>{next.pick} · {percent(next.probabilities[next.pick])}</td></tr>; })}</tbody></table></div><p className="note">과거 데이터 시험 결과입니다. 실제 다음 판 확률이나 실시간 검증 결과로 표시하지 않습니다.</p></section>}
         <section className="browser-panel"><div className="panel-title"><h2>{browserOpen ? '테스트 게임 화면' : 'Chrome 연결'}</h2><span>사이트는 Chrome에서 직접 이용</span></div>
           <div className="browser-slot" ref={slot}>{!browserOpen && <div className="chrome-panel"><div className="empty-symbol">◉</div>
             <h3>{chrome?.state === 'connected' ? 'Chrome 연결됨 · 게임 결과 인식 상태를 확인하세요' : 'Chrome 확장에서 프로그램 실행을 누르세요'}</h3>
@@ -121,6 +144,10 @@ function App() {
       </div>
       <div className="right-pane">
         <section><div className="panel-title"><h2>방별 통계</h2><button className="quiet" disabled={!snapshot?.roomId || !snapshot?.shoeId || busy} onClick={() => void action(async () => { if (snapshot?.roomId && snapshot.shoeId) await window.analyzer.exportCSV(snapshot.roomId, snapshot.shoeId); })}>CSV 내보내기</button></div>
+          <div className="manual-live"><b>수동 실시간 검증 · 다음 {latest ? latest + 1 : '—'}회차</b><p className="note">결과 입력 전에 저장된 예측을 O/X로 채점합니다. A는 8덱 이론값, B/C/D는 과거 패턴 추정입니다. 실제 게임 발생 시각은 자동 확인하지 못합니다.</p>
+            {demoData && <p className="recognition-warning">선택된 방은 테스트 기록입니다. 실제 검증은 새 분석 방에 기록을 저장한 뒤 시작하세요.</p>}
+            <div className="table-scroll"><table data-testid="manual-next"><thead><tr><th>방식</th><th>예상</th><th>B</th><th>P</th><th>T</th></tr></thead><tbody>{methods.map(method => { const forecast = next.find(forecast => forecast.method === method); return <tr key={method}><th>{method} {methodNames[method]}</th><td className={forecast?.pick}>{forecast?.pick ?? '—'}</td>{(['B','P','T'] as Outcome[]).map(outcome => <td key={outcome}>{percent(forecast?.probabilities[outcome] ?? null)}</td>)}</tr>; })}</tbody></table></div>
+            <div className="manual-actions">{(['B','P','T'] as Outcome[]).map(outcome => <button key={outcome} className="secondary" disabled={busy || demoData || !latest || !snapshot?.roomId || !snapshot.shoeId} onClick={() => void action(async () => { if (snapshot?.roomId && snapshot.shoeId && latest) await window.analyzer.appendManual({ roomId: snapshot.roomId, shoeId: snapshot.shoeId, round: latest + 1, outcome }); })}>{labels[outcome]} 결과 기록</button>)}</div><p className="note">버튼은 선택한 방·슈에 결과만 기록합니다. 사이트·베팅 버튼을 조작하지 않습니다.</p></div>
           <div className="selectors"><label>방<select aria-label="방" value={snapshot?.roomId ?? ''} onChange={e => { setRoom(e.target.value); setShoe(undefined); }}><option value="" disabled>방 기록 없음</option>{snapshot?.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
             <label>슈<select aria-label="슈" value={snapshot?.shoeId ?? ''} onChange={e => setShoe(e.target.value)}><option value="" disabled>슈 기록 없음</option>{snapshot?.rooms.find(r => r.id === snapshot.roomId)?.shoes.map(shoe => <option key={shoe}>{shoe}</option>)}</select></label></div>
           <div className="metrics"><div><span>전체 결과</span><b data-testid="total-results">{s?.total ?? 0}</b></div>{(['B', 'P', 'T'] as Outcome[]).map(o => <div key={o}><span className={o}>{labels[o]}</span><b>{s?.counts[o] ?? 0}</b><small>{percent(s?.ratios[o] ?? 0)}</small></div>)}</div>

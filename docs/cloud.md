@@ -21,3 +21,7 @@ Windows 앱 파일 교차 패키징은 성공했으나 NSIS 설치 EXE 생성은
 # 0.3.0 이미지 테스트
 
 `bash scripts/test-cloud.sh`는 53개 단위 테스트, 빌드, Electron 테스트 2개(`app.spec.ts`, `image-import.spec.ts`)를 실행합니다. 이미지 테스트에는 사이트 로그인이나 Chrome 연결이 필요 없습니다. Chrome 팝업·iframe 통합 테스트는 Windows CI에서 실행합니다. Windows CI는 설치 EXE에서도 이미지 테스트와 패키지 안의 Chrome 확장을 검사합니다.
+
+## 0.4.0 검증
+
+현재 `bash scripts/test-cloud.sh`는 64개 단위 테스트와 Linux Electron 테스트 3개를 실행합니다. 작은 격자 파일·클립보드 입력, 빅로드 타이 확인, 직접 입력·시뮬레이션·수동 새 결과 채점이 포함됩니다. Windows CI는 소스와 설치본에서 Chrome 테스트를 포함한 4개를 각각 실행합니다.

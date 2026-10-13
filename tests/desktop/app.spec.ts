@@ -17,6 +17,7 @@ test('automatic fixture collection, causal scoring, room/shoe separation and res
     await expect(page.getByRole('heading', { name: 'Baccarat Live Analyzer' })).toBeVisible();
     await page.getByRole('button', { name: '테스트 화면', exact: true }).click();
     await expect(page.getByTestId('total-results')).toHaveText('6');
+    await expect(page.getByRole('button', { name: '뱅커 결과 기록', exact: true })).toBeDisabled();
     let snapshot = await page.evaluate(() => window.analyzer.snapshot());
     expect(snapshot.results.every(r => r.historical)).toBe(true);
     expect(snapshot.forecasts.filter(f => f.targetRound === 7)).toHaveLength(4);

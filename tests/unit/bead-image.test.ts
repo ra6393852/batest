@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeBeadBitmap } from '../../src/collector/bead-image';
 import type { Outcome } from '../../src/shared/types';
+import { smallRoadBitmap, exampleOutcomes } from '../fixtures/road-bitmap';
 function fixture(boards: Array<{ x: number; y: number; outcomes: (Outcome | null)[]; hollow?: boolean }>, size = 650) {
   const width = size, height = 400, bitmap = new Uint8Array(width * height * 4).fill(255);
   const colors = { B: [20, 30, 240], P: [245, 140, 20], T: [40, 190, 20] };
@@ -19,6 +20,22 @@ function fixture(boards: Array<{ x: number; y: number; outcomes: (Outcome | null
 }
 const sequence: Outcome[] = ['B', 'P', 'T', 'B', 'B', 'P', 'T', 'P', 'B', 'P', 'B', 'T', 'P'];
 describe('read-only bead-road image analysis', () => {
+  it('reads small grey-grid beads with large white letters and pair marks', () => {
+    const image = smallRoadBitmap('bead');
+    const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);
+    expect(result.format).toBe('bead'); expect(result.outcomes).toEqual(exampleOutcomes);
+    expect(result.outcomes.filter(x => x === 'B')).toHaveLength(19); expect(result.outcomes.filter(x => x === 'P')).toHaveLength(16); expect(result.outcomes.filter(x => x === 'T')).toHaveLength(3);
+  });
+  it('separates touching same-color beads by grid cells', () => {
+    const image = smallRoadBitmap('bead', true);
+    expect(analyzeBeadBitmap(image.width, image.height, image.bitmap).outcomes).toEqual(exampleOutcomes);
+  });
+  it('reads the hollow big-road runs and requires review of green tie markers', () => {
+    const image = smallRoadBitmap('big-road');
+    const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);
+    expect(result.format).toBe('big-road'); expect(result.outcomes).toEqual(exampleOutcomes.filter(x => x !== 'T'));
+    expect(result.tieAfter).toHaveLength(2);
+  });
   it('reads six rows down each column, including the partial final column', () => {
     const image = fixture([{ x: 130, y: 80, outcomes: sequence }]);
     const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);

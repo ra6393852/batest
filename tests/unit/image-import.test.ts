@@ -7,7 +7,7 @@ import { ImageImport } from '../../src/main/image-import';
 import type { Outcome } from '../../src/shared/types';
 let store: AnalyzerStore, folder: string, importer: ImageImport;
 const sequence: Outcome[] = ['B', 'P', 'T', 'B', 'B', 'P', 'T'];
-const analysis = { outcomes: sequence, confidence: 0.8, bounds: { x: 0, y: 0, width: 10, height: 10 }, warnings: ['확인 필요'] };
+const analysis = { outcomes: sequence, confidence: 0.8, bounds: { x: 0, y: 0, width: 10, height: 10 }, warnings: ['확인 필요'], format: 'bead' as const, tieAfter: [] };
 beforeEach(async () => { folder = mkdtempSync(join(tmpdir(), 'image-import-')); store = await AnalyzerStore.open(join(folder, 'records.sqlite')); importer = new ImageImport(); });
 afterEach(() => { store.close(); rmSync(folder, { recursive: true, force: true }); });
 function save(outcomes = sequence, shoeId = 'image-shoe-1', startRound = 1) {
@@ -15,6 +15,19 @@ function save(outcomes = sequence, shoeId = 'image-shoe-1', startRound = 1) {
   return importer.save({ reviewId: review.id, roomName: '이미지 방', shoeId, startRound, outcomes }, store);
 }
 describe('confirmed image records', () => {
+  it('requires every big-road tie marker to be confirmed and expands ties in chronological order', () => {
+    const review = importer.create({ ...analysis, format: 'big-road', tieAfter: [1, 5] }, 'preview');
+    const input = { reviewId: review.id, roomName: '빅로드 방', shoeId: 's1', startRound: 1, outcomes: sequence.map(o => o === 'T' ? 'P' as const : o) };
+    expect(() => importer.save(input, store)).toThrow('모두 확인'); expect(store.snapshot().results).toHaveLength(0);
+    const result = importer.save({ ...input, tiesAfter: [{ index: 1, count: 2 }, { index: 5, count: 1 }] }, store);
+    const saved = store.snapshot(result.roomId, result.shoeId).results;
+    expect(saved.map(row => row.outcome)).toEqual(['B','P','T','T','P','B','B','P','T','P']); expect(result.added).toBe(10);
+  });
+  it('rejects duplicate or out-of-range tie metadata and ties on bead-road records', () => {
+    const review = importer.create(analysis, 'preview');
+    expect(() => importer.save({ reviewId: review.id, roomName: '방', shoeId: 's', startRound: 1, outcomes: sequence, tiesAfter: [{ index: 1, count: 1 }] }, store)).toThrow('타이 횟수');
+    expect(store.snapshot().results).toHaveLength(0);
+  });
   it('keeps image recognition out of the database until confirmation and never retrospectively scores', () => {
     const review = importer.create(analysis, 'data:image/png;base64,fixture');
     expect(store.snapshot().results).toHaveLength(0);

@@ -1,8 +1,10 @@
 import type { Outcome } from '../shared/types';
+import { findRoadGrids, readBeadGrid, readBigRoadGrid } from './road-grid';
 export interface BeadImageResult {
   outcomes: Outcome[]; confidence: number;
   bounds: { x: number; y: number; width: number; height: number };
   warnings: string[];
+  format: 'bead' | 'big-road'; tieAfter: number[];
 }
 type Dot = { x: number; y: number; width: number; height: number; outcome: Outcome; fill: number };
 // Electron's nativeImage.toBitmap() is BGRA. No files, network, or page interaction here.
@@ -18,6 +20,25 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
     else if (b >= 140 && b > r * 1.3 && b >= g * 0.9) colors[p] = 2;
     else if (g >= 100 && g > r * 1.25 && g > b * 1.15) colors[p] = 3;
   }
+  const grids = findRoadGrids(width, height, bitmap, colors);
+  const readings: Array<{ bounds: BeadImageResult['bounds']; outcomes: Outcome[]; tieAfter: number[]; format: 'bead' | 'big-road' }> = [];
+  for (const grid of grids) {
+    const bead = readBeadGrid(grid);
+    if (bead) { readings.push({ ...grid, outcomes: bead, tieAfter: [], format: 'bead' }); continue; }
+    const road = readBigRoadGrid(grid);
+    if (road) readings.push({ ...grid, ...road, format: 'big-road' });
+  }
+  readings.sort((a, b) => b.outcomes.length - a.outcomes.length);
+  if (readings.length) {
+    const reading = readings[0];
+    if (readings.some(other => other !== reading && other.outcomes.length >= reading.outcomes.length * 0.8 && (other.bounds.x >= reading.bounds.x + reading.bounds.width || reading.bounds.x >= other.bounds.x + other.bounds.width || other.bounds.y >= reading.bounds.y + reading.bounds.height || reading.bounds.y >= other.bounds.y + other.bounds.height)))
+      throw new Error('여러 그림판이 비슷하게 보여 하나를 정할 수 없습니다. 분석할 그림판만 포함한 이미지를 넣어주세요.');
+    return { outcomes: reading.outcomes, format: reading.format, tieAfter: reading.tieAfter, bounds: reading.bounds, confidence: 0.8,
+      warnings: reading.format === 'bead' ? ['비드로드 격자를 위→아래 6행, 왼쪽 열부터 읽었습니다. 빨강 B·파랑 P·초록 T의 순서를 원본과 확인하세요.', '방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다. 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.']
+        : ['빅로드의 B/P 연속과 꺾임을 따라 읽었습니다. 아래 파생 로드는 결과 기록에 포함하지 않습니다.', '초록 타이 표시의 횟수는 자동 확정하지 않습니다. 원본의 숫자/표시를 확인해 각 타이 횟수를 입력하세요.', '방·슈·실제 회차 번호를 확인하세요. 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.'] };
+  }
+  if (grids.some(grid => grid.cells.flat().filter(cell => cell.outcome !== null).length >= 7))
+    throw new Error('격자는 찾았지만 일부 결과 또는 순서가 불확실합니다. 원본을 확인하거나 B/P/T 직접 입력으로 시작하세요.');
   const dots: Dot[] = [], outcomes: Outcome[] = ['B', 'P', 'T'];
   for (let start = 0; start < pixels; start++) {
     if (!colors[start] || visited[start]) continue;
@@ -73,7 +94,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   }
   candidates.sort((a, b) => b.cells.length - a.cells.length);
   const chosen = candidates[0];
-  if (!chosen) throw new Error('6행 B/P/T 비드로드를 찾지 못했습니다. 빨강 B·파랑 P·초록 T의 채워진 원 그림판 이미지를 넣어주세요. 빅로드·빈 원·숫자만 있는 그림판은 지원하지 않습니다.');
+  if (!chosen) throw new Error('그림판 격자와 결과를 찾지 못했습니다. 비드로드 또는 빅로드 원본 영역을 선명하게 캡처해 넣어주세요.');
   const independent = candidates.find(candidate => candidate.cells.length >= chosen.cells.length * 0.8 && candidate.cells.filter(dot => chosen.cells.includes(dot)).length < candidate.cells.length * 0.5);
   if (independent) throw new Error('여러 비드로드가 비슷하게 보여 하나를 정할 수 없습니다. 분석할 비드로드만 포함한 이미지를 넣어주세요.');
   const left = Math.max(0, Math.floor(Math.min(...chosen.cells.map(d => d.x - d.width / 2))));
@@ -81,7 +102,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   const right = Math.min(width, Math.ceil(Math.max(...chosen.cells.map(d => d.x + d.width / 2))));
   const bottom = Math.min(height, Math.ceil(Math.max(...chosen.cells.map(d => d.y + d.height / 2))));
   return {
-    outcomes: chosen.cells.map(d => d.outcome), confidence: 0.8,
+    outcomes: chosen.cells.map(d => d.outcome), confidence: 0.8, format: 'bead', tieAfter: [],
     bounds: { x: left, y: top, width: right - left, height: bottom - top },
     warnings: ['색상 기반 인식 추정입니다. 빨강=B, 파랑=P, 초록=T인지 원본과 순서를 확인하세요.', '위에서 아래로 6개씩, 왼쪽 열부터 읽습니다. 방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다.', '이 이미지는 과거 기록으로 저장합니다. 실제 결과 발생 전 예측으로 소급 채점하지 않습니다.'],
   };

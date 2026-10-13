@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
   analyzeImage: () => ipcRenderer.invoke('image:analyze'),
+  pasteImage: () => ipcRenderer.invoke('image:paste'),
+  reviewSequence: sequence => ipcRenderer.invoke('image:sequence', sequence),
+  appendManual: input => ipcRenderer.invoke('analyzer:manual-result', input),
   saveImage: request => ipcRenderer.invoke('image:save', request),
   chromeInfo: () => ipcRenderer.invoke('chrome:info'),
   chromeReset: () => ipcRenderer.invoke('chrome:reset'),

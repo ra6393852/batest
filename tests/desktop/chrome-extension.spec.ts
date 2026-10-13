@@ -16,10 +16,16 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
   cpSync(process.env.DESKTOP_TEST_EXECUTABLE ? join(dirname(process.env.DESKTOP_TEST_EXECUTABLE), 'resources/chrome-extension') : 'dist/extension', extension, { recursive: true });
   // This fixture alone grants loopback page access; production prompts only for selected HTTPS game domains.
   const manifestFile = join(extension, 'manifest.json'), manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
-  manifest.host_permissions.push('http://127.0.0.1/*', 'https://lobby.example/*', 'https://game.example/*', 'https://frame.example/*');
+  manifest.host_permissions.push('http://127.0.0.1/*', 'https://lobby.example/*', 'https://game.example/*');
   manifest.permissions.push('webNavigation'); writeFileSync(manifestFile, JSON.stringify(manifest));
   const html = readFileSync('tests/fixtures/table.html');
-  const site = createServer((_request, response) => { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(html); });
+  const frameSite = createServer((_request, response) => { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(html.toString().replaceAll('demo-alpha', 'image-frame')); });
+  const site = createServer((request, response) => {
+    const framePort = (frameSite.address() as { port: number }).port;
+    const body = request.url === '/popup' ? html.toString().replaceAll('demo-alpha', 'image-popup').replace('</body>', `<iframe src="http://127.0.0.1:${framePort}/frame"></iframe></body>`) : html;
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(body);
+  });
+  frameSite.listen(0, '127.0.0.1'); await once(frameSite, 'listening');
   site.listen(0, '127.0.0.1'); await once(site, 'listening');
   const port = (site.address() as { port: number }).port;
   const store = await AnalyzerStore.open(join(folder, 'records.sqlite'));
@@ -67,8 +73,7 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
     // Routes are local fixture responses; no real provider login/session is contacted.
     profile = null; bridge.refreshProfile();
     await context.route('https://lobby.example/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Local fixture lobby</p>' }));
-    await context.route('https://game.example/**', route => route.fulfill({ contentType: 'text/html', body: html.toString().replaceAll('demo-alpha', 'image-popup').replace('</body>', '<iframe src="https://frame.example/table"></iframe></body>') }));
-    await context.route('https://frame.example/**', route => route.fulfill({ contentType: 'text/html', body: html.toString().replaceAll('demo-alpha', 'image-frame') }));
+    await context.route('https://game.example/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Fixture game awaiting a verified profile</p>' }));
     await context.route('https://unpermitted.example/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Game domain awaiting permission</p>' }));
     const lobby = await context.newPage(); await lobby.goto('https://lobby.example/');
     // Create real Chrome popup windows explicitly; discovery must work without a toolbar or an activeTab grant.
@@ -83,17 +88,20 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
     await expect.poll(() => worker.evaluate(async () => (await chrome.tabs.query({})).length), { timeout: 10000 }).toBe(tabCount + 1);
     await popup.getByRole('button', { name: '열린 게임 창 확인', exact: true }).click();
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'game.example' && target.kind === 'window'), { timeout: 10000 }).toBe(true);
-    await expect.poll(() => bridge.info().targets.some(target => target.host === 'frame.example' && target.kind === 'frame')).toBe(true);
     expect(bridge.info().targets.find(target => target.host === 'unpermitted.example')?.permission).toBe(false);
-    expect(bridge.info().targets.filter(target => ['game.example', 'frame.example'].includes(target.host)).every(target => target.recognition === 'unconfigured')).toBe(true);
+    expect(bridge.info().targets.filter(target => target.host === 'game.example').every(target => target.recognition === 'unconfigured')).toBe(true);
     expect(store.snapshot().rooms).toHaveLength(1);
-    profile = { ...demoProfile, hosts: ['game.example', 'frame.example'] }; bridge.refreshProfile();
+    // Use a real loopback server for popup/frame DOM collection. Chrome-created windows
+    // do not reliably enter Playwright's route interception. TLS checks stay enabled;
+    // plaintext is accepted only for an explicitly configured offline loopback profile.
+    await worker.evaluate(async localPort => { await chrome.windows.create({ url: `http://127.0.0.1:${localPort}/popup`, type: 'popup' }); }, port);
+    profile = { ...demoProfile, hosts: ['127.0.0.1'] }; bridge.refreshProfile();
     await expect.poll(() => store.snapshot('image-popup', 'demo-shoe-1').roomId, { timeout: 10000 }).toBe('image-popup');
     await expect.poll(() => store.snapshot('image-frame', 'demo-shoe-1').roomId).toBe('image-frame');
     expect(store.snapshot('image-frame', 'demo-shoe-1').results).toHaveLength(6);
-    await expect.poll(() => bridge.info().targets.some(target => target.host === 'frame.example' && target.recognition === 'observed')).toBe(true);
+    await expect.poll(() => bridge.info().targets.some(target => target.host === '127.0.0.1' && target.kind === 'frame' && target.recognition === 'observed')).toBe(true);
   } finally {
     await context?.close(); await bridge.close(); store.close();
-    await new Promise<void>(resolve => site.close(() => resolve())); rmSync(folder, { recursive: true, force: true });
+    await Promise.all([new Promise<void>(resolve => site.close(() => resolve())), new Promise<void>(resolve => frameSite.close(() => resolve()))]); rmSync(folder, { recursive: true, force: true });
   }
 });

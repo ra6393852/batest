@@ -1,6 +1,6 @@
 import { profileSchema, observationsSchema } from '../shared/validation';
 import type { AdapterProfile, ChromeGameTarget } from '../shared/types';
-import { httpsHost, allowedHost, relatedTabs } from './targets';
+import { collectorHost, allowedHost, relatedTabs } from './targets';
 let socket: WebSocket | null = null, profile: AdapterProfile | null = null, authenticated = false;
 let connecting = false, pairingCode: string | null = null;
 let status = '프로그램 실행 대기', latestError = '';
@@ -12,8 +12,9 @@ const frameKey = (tabId: number, frameId: number) => `${tabId}:${frameId}`;
 const BRIDGE_URL = 'ws://127.0.0.1:38741/bridge';
 const send = (message: unknown) => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message)); };
 async function grantedOrigins() {
-  return (await chrome.permissions.getAll()).origins?.filter(o => o.startsWith('https://')) ?? [];
+  return (await chrome.permissions.getAll()).origins?.filter(o => o.startsWith('https://') || (o === 'http://127.0.0.1/*' && profile?.hosts.includes('127.0.0.1'))) ?? [];
 }
+const frameHost = (url?: string) => collectorHost(url, Boolean(profile?.hosts.includes('127.0.0.1')));
 function targets(): ChromeGameTarget[] {
   const combined = new Map(discovered);
   for (const [key, frame] of scanned) if (Date.now() - (frame.scannedAt ?? 0) < 15000) combined.set(key, frame);
@@ -38,7 +39,7 @@ async function discover() {
   discovered.clear();
   for (const result of results) if (result.status === 'fulfilled') {
     for (const frame of result.value.frames.slice(0, 200)) {
-      const host = httpsHost(frame.url); if (!host) continue;
+      const host = frameHost(frame.url); if (!host) continue;
       const item: Frame = { tabId: result.value.tabId, frameId: frame.frameId, host, kind: frame.frameId === 0 ? 'window' : 'frame' };
       discovered.set(frameKey(item.tabId, item.frameId), item);
     }
@@ -124,7 +125,7 @@ chrome.runtime.onMessage.addListener((raw, sender, reply) => {
   }
   if (raw?.type === 'config' && sender.tab) {
     let host = ''; try { host = new URL(sender.url ?? '').hostname; } catch { /* no page URLs in logs */ }
-    if (authenticated && sender.tab.id !== undefined && httpsHost(sender.url)) {
+    if (authenticated && sender.tab.id !== undefined && frameHost(sender.url)) {
       const frameId = sender.frameId ?? 0, key = frameKey(sender.tab.id, frameId), previous = scanned.get(key);
       scanned.set(key, { tabId: sender.tab.id, frameId, host, kind: frameId === 0 ? 'window' : 'frame', count: previous?.count, scannedAt: Date.now() });
     }
@@ -135,7 +136,7 @@ chrome.runtime.onMessage.addListener((raw, sender, reply) => {
       const host = new URL(sender.url ?? '').hostname;
       if (!profile.hosts.includes(host)) return;
       const observations = observationsSchema.parse(raw.observations);
-      if (sender.tab.id !== undefined && httpsHost(sender.url)) scanned.set(frameKey(sender.tab.id, sender.frameId ?? 0), {
+      if (sender.tab.id !== undefined && frameHost(sender.url)) scanned.set(frameKey(sender.tab.id, sender.frameId ?? 0), {
         tabId: sender.tab.id, frameId: sender.frameId ?? 0, host, kind: sender.frameId ? 'frame' : 'window', count: observations.length, scannedAt: Date.now(),
       });
       send({ type: 'snapshot', host, observations });

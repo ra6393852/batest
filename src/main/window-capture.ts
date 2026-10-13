@@ -65,9 +65,9 @@ export class WindowCapture {
       if(!identity.roomName)throw new Error('방 이름을 읽지 못했습니다. 게임 창 왼쪽 위의 방 이름이 보여야 합니다.');
       if(identity.total==null)throw new Error('전체 결과 수(# 숫자)를 읽지 못했습니다. 그림판 위의 결과 수가 보여야 합니다.');
       const {width,height}=crop.getSize(),bitmap=crop.toBitmap();
-      if(identity.total===0){const update=this.session.accept({roomName:identity.roomName,total:0,outcomes:[],complete:true,confidence:1,observedAt});
+      const analysis=analyzeBeadBitmap(width,height,bitmap,true,identity.total===0);
+      if(identity.total===0&&analysis.outcomes.length===0){const update=this.session.accept({roomName:identity.roomName,total:0,outcomes:[],complete:true,confidence:1,observedAt});
         this.info={...this.info,...update,processedAt:new Date().toISOString()};this.notify(this.current());return;}
-      const analysis=analyzeBeadBitmap(width,height,bitmap,true);
       if(!analysis.beadCells)throw new Error('비드로드 칸을 읽지 못했습니다.');
       const confidence=Math.min(...beadColorConfidence(width,bitmap,analysis.beadCells,analysis.outcomes));
       const glyphs=digitStrip(width,height,bitmap,analysis.beadCells);

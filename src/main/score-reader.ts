@@ -44,6 +44,13 @@ export class ScoreReader {
       const png=nativeImage.createFromBitmap(Buffer.from(strip.bitmap),{width:strip.width,height:strip.height}).toPNG();
       const {data}=await worker.recognize(png);const text=data.text.trim();
       if (/^[0-9]$/.test(text)&&data.confidence>=80) {scores[index]=Number(text);confidences[index]=data.confidence/100;}
+      else {
+        // Different OS font rasters can leave a small digit uncertain. Try a
+        // larger rendering of the same glyph, keeping the confidence gate.
+        const larger=nativeImage.createFromBuffer(png).resize({width:128,quality:'best'}).toPNG();
+        const retry=await worker.recognize(larger);const value=retry.data.text.trim();
+        if(/^[0-9]$/.test(value)&&retry.data.confidence>=80){scores[index]=Number(value);confidences[index]=retry.data.confidence/100;}
+      }
     }
     return { scores, confidences };
   }

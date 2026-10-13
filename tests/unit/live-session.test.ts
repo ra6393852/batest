@@ -25,6 +25,9 @@ describe('automatic visual room collection',()=>{
     const result=analyzeBeadBitmap(image.width,image.height,image.bitmap,true);
     expect(result.outcomes).toEqual(exampleOutcomes);expect(result.completeGrid).toBe(true);
     expect(Math.min(...beadColorConfidence(image.width,image.bitmap,result.beadCells!,result.outcomes))).toBeGreaterThan(.92);
+    expect(analyzeBeadBitmap(image.width,image.height,image.bitmap,true,true).outcomes).toEqual(exampleOutcomes);
+    const empty=smallRoadBitmap('bead',false,[]);
+    expect(analyzeBeadBitmap(empty.width,empty.height,empty.bitmap,true,true).outcomes).toEqual([]);
   });
   it('restores B independently, scores only continuously observed new results and preserves A when switching',async()=>{
     const folder=mkdtempSync(join(tmpdir(),'baccarat-live-'));let time=new Date('2026-10-14T01:00:00Z');const store=await AnalyzerStore.open(join(folder,'db.sqlite'),()=>time);

@@ -14,7 +14,7 @@ export interface BeadImageResult {
 }
 type Dot = { x: number; y: number; width: number; height: number; outcome: Outcome; fill: number };
 // Electron's nativeImage.toBitmap() is BGRA. No files, network, or page interaction here.
-export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Array, capture = false): BeadImageResult {
+export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Array, capture = false, allowEmpty = false): BeadImageResult {
   const pixels = width * height;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || pixels > 12_000_000 || bitmap.length !== pixels * 4)
     throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
@@ -45,6 +45,10 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
     if (road) readings.push({ ...grid, ...road, format: 'big-road' });
   }
   if (capture) readings = readings.filter(reading => reading.format === 'bead');
+  if (capture && allowEmpty && !readings.length) {
+    const empty = grids.filter(grid => grid.cells.length >= 3 && grid.cells.flat().every(cell => cell.outcome === null && !cell.marked));
+    if (empty.length === 1) return {outcomes:[],confidence:1,format:'bead',tieAfter:[],bounds:empty[0].bounds,completeGrid:true,warnings:[]};
+  }
   readings.sort((a, b) => b.outcomes.length - a.outcomes.length);
   if (readings.length) {
     const reading = readings[0];

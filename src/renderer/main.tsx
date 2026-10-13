@@ -12,13 +12,14 @@ const date = (value: string) => new Date(value).toLocaleString('ko-KR');
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [selectedRoom, setRoom] = useState<string>(), [selectedShoe, setShoe] = useState<string>();
-  const [status, setStatus] = useState<CollectorStatus>({ state: 'idle', message: 'Chrome에서 로그인·에볼루션 접속 후 확장의 프로그램 실행을 누르세요.', history: 'unknown' });
+  const [status, setStatus] = useState<CollectorStatus>({ state: 'idle', message: '그림판 캡처 후 이미지 붙여넣기 또는 Ctrl+V로 시작하세요.', history: 'unknown' });
   const [chrome, setChrome] = useState<ChromeConnection>(), [extensionFolder, setExtensionFolder] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [imageReview, setImageReview] = useState<ImageReview>(), [imageOutcomes, setImageOutcomes] = useState<Outcome[]>([]), [imageConfirmed, setImageConfirmed] = useState(false);
   const [tieCounts, setTieCounts] = useState<Record<number, string>>({}), [manualSequence, setManualSequence] = useState(''), [simulation, setSimulation] = useState<ReturnType<typeof simulateHistory>>();
   const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
-  const slot = useRef<HTMLDivElement>(null), request = useRef(0);
+  const slot = useRef<HTMLDivElement>(null), reviewPanel = useRef<HTMLDivElement>(null), request = useRef(0), imageReading = useRef(false);
+  useEffect(() => { if (imageReview) reviewPanel.current?.scrollIntoView({ block: 'start' }); }, [imageReview]);
   const load = useCallback(async () => {
     const id = ++request.current;
     try { const data = await window.analyzer.snapshot(selectedRoom, selectedShoe); if (id === request.current) setSnapshot(data); }
@@ -40,22 +41,33 @@ function App() {
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(''); try { await fn(); await load(); } catch { setError('작업 실패 · 입력 형식이나 기존 회차 충돌을 확인하세요.'); } finally { setBusy(false); } }
   async function open(mode: 'site' | 'demo') { setBrowserOpen(true); await window.analyzer.open(mode); requestAnimationFrame(bounds); }
   async function readImage(paste = false, manual = false) {
-    setBusy(true); setError('');
+    if (imageReading.current) return;
+    imageReading.current = true;
+    setBusy(true); setError(''); setImageReview(undefined); setImageConfirmed(false); setImageSaved('');
     try {
       if (browserOpen) { await window.analyzer.closeBrowser(); setBrowserOpen(false); }
       const review = manual ? await window.analyzer.reviewSequence(manualSequence) : paste ? await window.analyzer.pasteImage() : await window.analyzer.analyzeImage();
       if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setTieCounts({}); setImageConfirmed(false); setImageSaved(''); }
     } catch (error) { setError(error instanceof Error ? error.message.split('Error:').at(-1)!.trim() : '그림판 이미지를 읽지 못했습니다.'); }
-    finally { setBusy(false); }
+    finally { imageReading.current = false; setBusy(false); }
   }
   useEffect(() => {
     const paste = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (!busy && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '') && !target?.isContentEditable) {
-        event.preventDefault(); void readImage(true);
+        event.preventDefault(); if (!event.repeat) void readImage(true);
       }
     };
-    document.addEventListener('keydown', paste); return () => document.removeEventListener('keydown', paste);
+    // Image paste also works while a room name or sequence field has focus.
+    // Ordinary text keeps the browser's normal paste behavior; never read it here.
+    const pasteImage = (event: ClipboardEvent) => {
+      if (!Array.from(event.clipboardData?.items ?? []).some(item => item.kind === 'file' && item.type.startsWith('image/'))) return;
+      event.preventDefault();
+      if (!busy) void readImage(true);
+    };
+    document.addEventListener('keydown', paste);
+    document.addEventListener('paste', pasteImage, true);
+    return () => { document.removeEventListener('keydown', paste); document.removeEventListener('paste', pasteImage, true); };
   }, [busy, browserOpen]);
   async function saveImage() {
     if (!imageReview || !imageConfirmed) return;
@@ -86,11 +98,15 @@ function App() {
       {browserOpen && <button className="quiet" onClick={() => void action(async () => { await window.analyzer.closeBrowser(); setBrowserOpen(false); })}>브라우저 닫기</button>}
       <span className={`status ${status.state}`} data-testid="collector-status">{status.message}</span>
     </nav>
+    <div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">
+      <div><b>사진 저장 없이 바로 분석</b><p><kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> → 그림판만 드래그 → 이 프로그램에서 <kbd>Ctrl</kbd> + <kbd>V</kbd></p></div>
+      <button disabled={busy} onClick={() => void readImage(true)}>캡처 붙여넣기 (Ctrl+V)</button>
+    </div>
     {error && <div role="alert" className="error">{error}</div>}
     <main>
       <div className="left-pane">
         {!browserOpen && <section className="image-panel"><div className="panel-title"><h2>그림판 이미지 분석</h2><span>Chrome 연결 없이 사용 가능</span></div>
-          <p className="note">파일 선택 또는 이미지 붙여넣기로 비드로드·빅로드 격자를 읽습니다. 비드로드는 B/P/T를, 빅로드는 B/P 흐름을 읽고 초록 타이 표시의 횟수는 직접 확인합니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
+          <p className="note">캡처는 Windows 클립보드에 복사됩니다. 이 프로그램으로 돌아와 Ctrl+V를 누르면 인식 결과와 원본 미리보기가 나옵니다. 비드로드는 B/P/T를, 빅로드는 B/P 흐름을 읽고 초록 타이 표시의 횟수는 직접 확인합니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
           <div className="image-fields"><label>방 이름<input aria-label="이미지 방 이름" value={imageRoom} maxLength={120} onChange={e => setImageRoom(e.target.value)}/></label><label>기록 그룹 / 슈<input aria-label="이미지 슈" value={imageShoe} maxLength={120} onChange={e => setImageShoe(e.target.value)}/></label><label>이미지 첫 결과의 기록 번호<input aria-label="이미지 시작 번호" type="number" min={1} max={999500} value={imageStart} onChange={e => setImageStart(Number(e.target.value))}/></label></div>
           <p className="note">같은 방·슈·시작 번호로 다시 넣으면 중복을 막습니다. 새 슈는 그룹 이름을 바꾸세요. 실제 회차를 모르면 별도 그룹에서 1부터 번호를 부여하세요. 이미지는 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.</p>
           <details className="manual-input" open><summary>B/P/T 직접 입력 · 시뮬레이션 시작</summary>
@@ -99,7 +115,7 @@ function App() {
             <p className="note">예시는 보내주신 비드로드를 눈으로 전사한 기록이며 원본과 확인이 필요합니다. 시뮬레이션은 처음 10개로 시작해 이후 결과를 하나씩 채점하는 과거 데이터 시험입니다. 실제 실시간 적중률에 합산하지 않습니다.</p>
           </details>
           {imageSaved && <p role="status" data-testid="image-save-status">{imageSaved}</p>}
-          {imageReview && <div className="image-review">
+          {imageReview && <div className="image-review" ref={reviewPanel}>
             {imageReview.preview && <img src={imageReview.preview} alt="자동으로 찾은 그림판 원본 영역"/>}
             <p>{imageReview.preview ? imageReview.format === 'bead' ? '비드로드 인식' : '빅로드 인식 · 타이 횟수 확인 필요' : '직접 입력 기록 확인'}</p>
             <p><b data-testid="image-detected-count">{imageOutcomes.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>

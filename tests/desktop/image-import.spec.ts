@@ -4,6 +4,52 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exampleOutcomes, smallRoadBitmap } from '../fixtures/road-bitmap';
 
+test('image Ctrl+V works on dashboard and focused inputs while text paste stays unchanged', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'baccarat-paste-')); let app: ElectronApplication | undefined;
+  try {
+    app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
+      args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
+    const page = await app.firstWindow();
+    await expect(page.getByRole('group', { name: '그림판 캡처 붙여넣기 안내' })).toContainText('Win');
+    const copyRoad = async (format: 'bead' | 'big-road') => {
+      const road = smallRoadBitmap(format);
+      await app!.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
+        const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
+        await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
+      }, { width: road.width, height: road.height, bitmap: Buffer.from(road.bitmap).toString('base64') });
+    };
+    await copyRoad('bead');
+    await page.getByRole('heading', { name: 'Baccarat Live Analyzer', exact: true }).click();
+    await page.keyboard.press('Control+v');
+    await expect(page.getByTestId('image-detected-count')).toHaveText('38개 결과 인식 추정');
+    await copyRoad('big-road');
+    const room = page.getByLabel('이미지 방 이름'); await room.fill('붙여넣기 방');
+    await page.keyboard.press('Control+v');
+    await expect(page.getByTestId('image-detected-count')).toHaveText('35개 결과 인식 추정');
+    await expect(room).toHaveValue('붙여넣기 방');
+    await copyRoad('bead');
+    const sequence = page.getByLabel('B/P/T 기록 직접 입력'); await sequence.fill('BPT');
+    // Exercise the native Edit > Paste route, not a synthetic DOM paste event.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.paste());
+    await expect(page.getByTestId('image-detected-count')).toHaveText('38개 결과 인식 추정');
+    await expect(sequence).toHaveValue('BPT');
+    await app.evaluate(async ({ clipboard }) => { await clipboard.writeText('P B T'); });
+    await sequence.fill(''); await page.keyboard.press('Control+v');
+    await expect(sequence).toHaveValue('P B T');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await page.getByRole('button', { name: '캡처 붙여넣기 (Ctrl+V)', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('클립보드에 이미지가 없습니다');
+    await expect(page.getByTestId('image-detected-count')).toHaveCount(0);
+    await copyRoad('bead');
+    await page.getByRole('button', { name: '캡처 붙여넣기 (Ctrl+V)', exact: true }).click();
+    await expect(page.getByTestId('image-detected-count')).toHaveText('38개 결과 인식 추정');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect((await page.evaluate(() => window.analyzer.snapshot())).results).toHaveLength(0);
+    await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
+    await page.screenshot({ path: 'test-results/clipboard-dashboard.png' });
+  } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
+});
+
 test('image file preview, manual correction, confirmation, deduplication and restart persistence', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'baccarat-image-')); let app: ElectronApplication | undefined;
   const launch = () => electron.launch({

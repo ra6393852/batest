@@ -3,7 +3,7 @@ import type { Outcome } from '../shared/types';
 import type { AnalyzerStore } from './store';
 export interface LiveFrame {
   roomName: string; outcomes: Outcome[]; confidence: number; total: number;
-  complete: boolean; observedAt: string; scores?: Array<number|null>;
+  complete: boolean; observedAt: string; firstSeenAt?:string; scores?: Array<number|null>;
 }
 export interface LiveUpdate {
   state:'waiting'|'collecting'|'blocked'; message:string; roomId?:string; roomName?:string; shoeId?:string; rounds?:number; changed?:boolean;
@@ -21,7 +21,7 @@ export class LiveSession {
     const base={roomId,roomName:frame.roomName,rounds:frame.outcomes.length};
     const key=JSON.stringify([roomId,frame.total,frame.outcomes]);
     if(this.candidate?.key===key)this.candidate.repeats++;
-    else this.candidate={key,repeats:1,observedAt:frame.observedAt,scores:frame.scores};
+    else this.candidate={key,repeats:1,observedAt:frame.firstSeenAt??frame.observedAt,scores:frame.scores};
     if(frame.total!==frame.outcomes.length||(!frame.complete&&frame.total>0))
       return this.invalid('전체 결과 수와 그림판 개수가 다르거나 시작 열이 잘렸습니다. 누락 기록을 자동으로 만들지 않습니다.');
     if(frame.confidence<0.92)return {...base,state:'waiting',message:'색상 판독이 불확실합니다. 결과 확정을 보류하고 다음 화면을 확인합니다.'};

@@ -59,6 +59,11 @@ describe('automatic visual room collection',()=>{
       accept(['T']);expect(accept(['T']).state).toBe('blocked');
       accept([]);accept([]);accept(['T']);const reset=accept(['T']);expect(reset.state).toBe('collecting');expect(reset.shoeId).not.toBe(a.shoeId);
       expect(store.snapshot(reset.roomId,reset.shoeId).results).toHaveLength(1);expect(store.snapshot(a.roomId,a.shoeId).results).toHaveLength(8);
+      // An image can arrive during slow OCR before the cutoff is committed.
+      // Preserve that capture time so a later prediction receives no credit.
+      accept(['T','B'],{firstSeenAt:'2026-10-14T02:00:00.000Z'});
+      accept(['T','B'],{firstSeenAt:'2026-10-14T02:00:00.000Z'});
+      expect(store.snapshot(reset.roomId,reset.shoeId).stats.advanceAccuracy.A.count).toBe(0);
     }finally{store.close();rmSync(folder,{recursive:true,force:true});}
   });
 });

@@ -15,9 +15,11 @@ test('automatic fixture collection, causal scoring, room/shoe separation and res
     });
     app = await launch(); const page = await app.firstWindow();
     await expect(page.getByRole('heading', { name: 'Baccarat Live Analyzer' })).toBeVisible();
-    await page.getByRole('button', { name: '테스트 화면', exact: true }).click();
+    await expect(page.getByRole('button', { name: '테스트 화면', exact: true })).toHaveCount(0);
+    // Collector integration remains an internal fixture, outside the clipboard-only UI.
+    await page.evaluate(async () => { await window.analyzer.open('demo'); window.analyzer.setBrowserBounds({ x: 24, y: 170, width: 600, height: 350 }); });
     await expect(page.getByTestId('total-results')).toHaveText('6');
-    await expect(page.getByRole('button', { name: '뱅커 결과 기록', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '뱅커 결과 기록', exact: true })).toHaveCount(0);
     let snapshot = await page.evaluate(() => window.analyzer.snapshot());
     expect(snapshot.results.every(r => r.historical)).toBe(true);
     expect(snapshot.forecasts.filter(f => f.targetRound === 7)).toHaveLength(4);
@@ -53,7 +55,7 @@ test('automatic fixture collection, causal scoring, room/shoe separation and res
     const restored = await reopened.evaluate(() => window.analyzer.snapshot('demo-alpha', 'demo-shoe-1'));
     expect(restored.results).toHaveLength(8); expect(restored.stats.comparisons).toBe(2);
     // Remote fixture has no privileged bridge or Node globals.
-    await reopened.getByRole('button', { name: '테스트 화면', exact: true }).click();
+    await reopened.evaluate(async () => { await window.analyzer.open('demo'); window.analyzer.setBrowserBounds({ x: 24, y: 170, width: 600, height: 350 }); });
     await expect.poll(() => app.windows().some(p => p.url().endsWith('table.html'))).toBe(true);
     const newGame = app.windows().find(p => p.url().endsWith('table.html'))!;
     expect(await newGame.evaluate(() => typeof (window as unknown as { analyzer?: unknown }).analyzer)).toBe('undefined');

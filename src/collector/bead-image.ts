@@ -94,7 +94,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   }
   candidates.sort((a, b) => b.cells.length - a.cells.length);
   const chosen = candidates[0];
-  if (!chosen) throw new Error('그림판 격자와 결과를 찾지 못했습니다. 비드로드 또는 빅로드 원본 영역을 선명하게 캡처해 넣어주세요.');
+  if (!chosen) throw new Error('격자·원 위치를 확정하지 못했습니다. 현재 인식 규칙에 맞는 결과를 찾지 못했습니다.');
   const independent = candidates.find(candidate => candidate.cells.length >= chosen.cells.length * 0.8 && candidate.cells.filter(dot => chosen.cells.includes(dot)).length < candidate.cells.length * 0.5);
   if (independent) throw new Error('여러 비드로드가 비슷하게 보여 하나를 정할 수 없습니다. 분석할 비드로드만 포함한 이미지를 넣어주세요.');
   const left = Math.max(0, Math.floor(Math.min(...chosen.cells.map(d => d.x - d.width / 2))));

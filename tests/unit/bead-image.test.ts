@@ -36,6 +36,41 @@ describe('read-only bead-road image analysis', () => {
     expect(result.format).toBe('big-road'); expect(result.outcomes).toEqual(exampleOutcomes.filter(x => x !== 'T'));
     expect(result.tieAfter).toHaveLength(2);
   });
+  it('reads six complete rows with white outer borders instead of grey boundaries', () => {
+    const image = smallRoadBitmap('big-road');
+    for (const y of [4, 76]) for (let x = 6; x <= 462; x++) image.bitmap.set([255, 255, 255, 255], (y * image.width + x) * 4);
+    const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);
+    expect(result.format).toBe('big-road'); expect(result.outcomes).toEqual(exampleOutcomes.filter(x => x !== 'T'));
+    expect(result.tieAfter).toHaveLength(2);
+  });
+  it('ignores an extra grey watermark stroke between interior grid lines', () => {
+    const image = smallRoadBitmap('big-road');
+    for (const y of [4, 76]) for (let x = 6; x <= 462; x++) image.bitmap.set([255, 255, 255, 255], (y * image.width + x) * 4);
+    for (let x = 310; x < 410; x++) image.bitmap.set([180, 180, 180, 255], (60 * image.width + x) * 4);
+    expect(analyzeBeadBitmap(image.width, image.height, image.bitmap).outcomes).toEqual(exampleOutcomes.filter(x => x !== 'T'));
+  });
+  it('does not invent missing lower rows when a chart is cropped', () => {
+    const image = smallRoadBitmap('big-road'), height = 65;
+    expect(() => analyzeBeadBitmap(image.width, height, image.bitmap.slice(0, image.width * height * 4))).toThrow('찾지 못했습니다');
+  });
+  it('preserves six-high B/P runs when the outer dividers are not grey', () => {
+    const outcomes = 'BBBBBBPPPPPPBPBPBP'.split('') as Outcome[], image = smallRoadBitmap('big-road', false, outcomes);
+    for (const y of [4, 76]) for (let x = 6; x <= 462; x++) image.bitmap.set([255, 255, 255, 255], (y * image.width + x) * 4);
+    expect(analyzeBeadBitmap(image.width, image.height, image.bitmap).outcomes).toEqual(outcomes);
+  });
+  it('recovers a non-grey left border without losing the first result column', () => {
+    const image = smallRoadBitmap('big-road');
+    for (const y of [4, 76]) for (let x = 6; x <= 462; x++) image.bitmap.set([255, 255, 255, 255], (y * image.width + x) * 4);
+    for (const x of [6, 462]) for (let y = 4; y <= 76; y++) image.bitmap.set([255, 255, 255, 255], (y * image.width + x) * 4);
+    expect(analyzeBeadBitmap(image.width, image.height, image.bitmap).outcomes).toEqual(exampleOutcomes.filter(x => x !== 'T'));
+  });
+  it('rejects a last result column cut in half instead of returning an earlier prefix', () => {
+    const image = smallRoadBitmap('big-road'), bp = exampleOutcomes.filter(x => x !== 'T');
+    const runs = bp.filter((value, i) => i === 0 || value !== bp[i - 1]).length;
+    const width = 6 + (runs - 1) * 12 + 6, bitmap = new Uint8Array(width * image.height * 4);
+    for (let y = 0; y < image.height; y++) bitmap.set(image.bitmap.slice(y * image.width * 4, (y * image.width + width) * 4), y * width * 4);
+    expect(() => analyzeBeadBitmap(width, image.height, bitmap)).toThrow('찾지 못했습니다');
+  });
   it('reads six rows down each column, including the partial final column', () => {
     const image = fixture([{ x: 130, y: 80, outcomes: sequence }]);
     const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);

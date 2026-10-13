@@ -1,5 +1,7 @@
 # Linux 클라우드 개발·검증
 
+0.4.4의 기본 UI는 클립보드 입력 전용입니다. Linux 검증은 단위 테스트 70개와 Electron 4개이며, Windows CI는 소스와 압축 해제한 무설치 EXE에서 내부 Chrome 모듈을 포함해 각각 5개를 검사합니다. Chrome 서버는 명시적 `--enable-chrome-bridge` 개발 실행에서만 시작합니다. 아래 버전별 UI/검증 설명은 과거 기록입니다.
+
 0.4.2의 Windows 배포는 무설치 ZIP입니다. `npm run dist:win`은 x64 ZIP을 만들고, Windows CI는 압축을 푼 EXE에서 5개 데스크톱 테스트를 실행합니다. 현재 Linux 검증은 단위 테스트 64개와 Electron 테스트 4개입니다. 아래 버전별 설치 EXE/NSIS 설명은 과거 검증 기록입니다.
 
 선택된 `/workspace/batest` 체크아웃을 그대로 사용합니다. 클라우드 작업은 이미 격리돼 있으므로 별도의 Git worktree를 만들지 않습니다.

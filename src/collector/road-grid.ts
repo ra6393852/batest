@@ -33,11 +33,57 @@ export function findRoadGrids(width: number, height: number, bitmap: Uint8Array,
       previous.left = Math.min(previous.left, best.left); previous.right = Math.max(previous.right, best.right);
     } else lines.push({ y, ...best, count: 1 });
   }
+  // Outer chart borders may be white/gold rather than grey. Find five evenly
+  // spaced interior dividers, allowing unrelated watermark strokes between them,
+  // and recover the two boundaries only when the full six rows fit the image.
+  const bands: Array<typeof lines> = [];
+  for (let first = 0; first + 6 < lines.length; first++) bands.push(lines.slice(first, first + 7));
+  const inferred = new Set<string>();
+  for (let first = 0; first < lines.length; first++) {
+    for (let second = first + 1; second < Math.min(lines.length, first + 7); second++) {
+      const dy = lines[second].y - lines[first].y;
+      if (dy < 7 || dy > 128) continue;
+      const tolerance = Math.max(1.5, dy * 0.09), interior = [lines[first], lines[second]];
+      let previous = second;
+      for (let row = 2; row < 5; row++) {
+        const goal = lines[first].y + row * dy;
+        let found = -1, distance = Infinity;
+        for (let index = previous + 1; index < lines.length && lines[index].y <= goal + tolerance; index++) {
+          const delta = Math.abs(lines[index].y - goal);
+          if (delta <= tolerance && delta < distance) { found = index; distance = delta; }
+        }
+        if (found < 0) break;
+        interior.push(lines[found]); previous = found;
+      }
+      if (interior.length !== 5) continue;
+      const top = interior[0].y - dy, bottom = interior[4].y + dy;
+      if (top < 0 || bottom >= height) continue;
+      const key = `${Math.round(top)}:${Math.round(bottom)}`;
+      if (inferred.has(key)) continue;
+      // Require matching line spans. Text alone must not invent a chart.
+      const left = Math.max(...interior.map(line => line.left)), right = Math.min(...interior.map(line => line.right));
+      if (right - left < minimum) continue;
+      // Recovered first/last rows must lie on the bright chart surface.
+      const brightRow = (y: number) => {
+        let bright = 0, samples = 0;
+        for (let x = left; x <= right; x += 2) {
+          const p = Math.round(y) * width + x;
+          if (bitmap[p * 4 + 3] >= 160 && Math.max(bitmap[p * 4], bitmap[p * 4 + 1], bitmap[p * 4 + 2]) >= 200) bright++;
+          samples++;
+        }
+        return samples && bright / samples >= 0.8;
+      };
+      if (!brightRow(top + dy * 0.5) || !brightRow(bottom - dy * 0.5)) continue;
+      inferred.add(key);
+      bands.push([{ y: top, left, right, count: 0 }, ...interior, { y: bottom, left, right, count: 0 }]);
+    }
+  }
   const grids: RoadGrid[] = [];
-  for (let first = 0; first + 6 < lines.length && grids.length < 30; first++) {
-    const band = lines.slice(first, first + 7), dy = (band[6].y - band[0].y) / 6;
+  for (const band of bands) {
+    if (grids.length >= 30) break;
+    const dy = (band[6].y - band[0].y) / 6;
     if (dy < 7 || dy > 128 || band.some((line, row) => Math.abs(line.y - band[0].y - row * dy) > Math.max(1.5, dy * 0.09))) continue;
-    const prior = lines[first - 1];
+    const prior = [...lines].reverse().find(line => line.y < band[0].y - 2);
     if (prior && Math.abs(band[0].y - prior.y - dy) < Math.max(1.5, dy * 0.09) && Math.min(prior.right, band[0].right) - Math.max(prior.left, band[0].left) > Math.min(prior.right - prior.left, band[0].right - band[0].left) * 0.8) continue;
     const top = Math.round(band[0].y), bottom = Math.round(band[6].y), end = Math.min(width - 1, Math.ceil(Math.max(...band.map(line => line.right))));
     const xLines: number[] = [];
@@ -57,6 +103,31 @@ export function findRoadGrids(width: number, height: number, bitmap: Uint8Array,
       if (chain.length < 3 || chain.length > 100) return;
       const dx = (chain.at(-1)! - chain[0]) / (chain.length - 1);
       if (chain.some((x, i) => Math.abs(x - chain[0] - i * dx) > Math.max(1.5, dx * 0.1))) return;
+      // A white/gold vertical border must not cause the first/last result column
+      // to be discarded. Recover an adjacent cell only from visible colored ink
+      // on the chart surface; reject a result column cut by the image edge.
+      const hasEdgeResult = (left: number, right: number) => {
+        let hasInk = false, bright = 0, area = 0;
+        for (let row = 0; row < 6; row++) {
+          let ink = 0, rowArea = 0;
+          const y0 = Math.round(band[0].y + row * dy), y1 = Math.round(band[0].y + (row + 1) * dy);
+          for (let y = y0 + 1; y < y1; y++) for (let x = Math.max(0, Math.round(left) + 1); x < Math.min(width, Math.round(right)); x++) {
+            const p = y * width + x, b = bitmap[p * 4], g = bitmap[p * 4 + 1], r = bitmap[p * 4 + 2];
+            ink += Number(colors[p] !== 0); rowArea++; area++;
+            if (bitmap[p * 4 + 3] >= 160 && Math.min(r, g, b) >= 200 && Math.max(r, g, b) - Math.min(r, g, b) <= 10) bright++;
+          }
+          if (ink >= Math.max(3, rowArea * 0.055)) hasInk = true;
+        }
+        return hasInk && area > 0 && bright / area >= 0.25;
+      };
+      if (hasEdgeResult(chain[0] - dx, chain[0])) {
+        if (chain[0] - dx < 0) return;
+        chain = [chain[0] - dx, ...chain];
+      }
+      if (hasEdgeResult(chain.at(-1)!, chain.at(-1)! + dx)) {
+        if (chain.at(-1)! + dx >= width) return;
+        chain = [...chain, chain.at(-1)! + dx];
+      }
       const cells: RoadCell[][] = [];
       for (let column = 0; column + 1 < chain.length; column++) {
         const rows: RoadCell[] = [];

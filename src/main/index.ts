@@ -102,7 +102,7 @@ void app.whenReady().then(async () => {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
-  if (!isSmoke) {
+  if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
     chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,
       rows => { store.ingest(rows); changed(); }, notifyChrome,
       (message, collecting) => status(collecting ? 'collecting' : 'unsupported', message, collecting ? 'visible-only' : 'unknown'));

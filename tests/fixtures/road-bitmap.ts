@@ -1,7 +1,7 @@
 import type { Outcome } from '../../src/shared/types';
 export const exampleOutcomes = ('BBBPPB' + 'BTBPPP' + 'BBPPPB' + 'PBPBPT' + 'TBBPPB' + 'BBBPPB' + 'BP').split('') as Outcome[];
 const glyphs = { B: ['11110','10001','10001','11110','10001','10001','11110'], P: ['11110','10001','10001','11110','10000','10000','10000'], T: ['11111','00100','00100','00100','00100','00100','00100'] };
-export function smallRoadBitmap(kind: 'bead' | 'big-road', touching = false) {
+export function smallRoadBitmap(kind: 'bead' | 'big-road', touching = false, sequence: Outcome[] = exampleOutcomes) {
   const width = 475, height = 139, bitmap = new Uint8Array(width * height * 4);
   const set = (x: number, y: number, color: number[]) => { if (x >= 0 && y >= 0 && x < width && y < height) bitmap.set([...color, 255], (Math.round(y) * width + Math.round(x)) * 4); };
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) set(x, y, x >= 4 && x <= 468 && y >= 10 && y <= 122 ? [255,255,255] : [12,16,90]);
@@ -22,13 +22,13 @@ export function smallRoadBitmap(kind: 'bead' | 'big-road', touching = false) {
     }));
     if (marked) for (let offset = -3; offset <= 3; offset++) set(Math.round(cx + offset), Math.round(cy - offset), kind === 'bead' ? [255,255,255] : [20,180,15]);
   };
-  if (kind === 'bead') exampleOutcomes.forEach((outcome, index) => paint(Math.floor(index / 6), index % 6, outcome, index % 5 === 1));
+  if (kind === 'bead') sequence.forEach((outcome, index) => paint(Math.floor(index / 6), index % 6, outcome, index % 5 === 1));
   else {
     let column = -1, row = 0, previous: Outcome | null = null;
-    for (let index = 0; index < exampleOutcomes.length; index++) {
-      const outcome = exampleOutcomes[index]; if (outcome === 'T') continue;
+    for (let index = 0; index < sequence.length; index++) {
+      const outcome = sequence[index]; if (outcome === 'T') continue;
       if (outcome !== previous) { column++; row = 0; } else row++;
-      paint(column, row, outcome, exampleOutcomes[index + 1] === 'T'); previous = outcome;
+      paint(column, row, outcome, sequence[index + 1] === 'T'); previous = outcome;
     }
   }
   return { width, height, bitmap };

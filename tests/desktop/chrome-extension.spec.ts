@@ -66,17 +66,22 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
     // A popup with no extension toolbar and a cross-origin game iframe are discoverable from the app's panel.
     // Routes are local fixture responses; no real provider login/session is contacted.
     profile = null; bridge.refreshProfile();
-    await context.route('https://lobby.example/**', route => route.fulfill({ contentType: 'text/html', body: '<button onclick="window.open(\'https://game.example/table\',\'game\',\'width=800,height=600\')">에볼루션 창 열기</button>' }));
+    await context.route('https://lobby.example/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Local fixture lobby</p>' }));
     await context.route('https://game.example/**', route => route.fulfill({ contentType: 'text/html', body: html.toString().replaceAll('demo-alpha', 'image-popup').replace('</body>', '<iframe src="https://frame.example/table"></iframe></body>') }));
     await context.route('https://frame.example/**', route => route.fulfill({ contentType: 'text/html', body: html.toString().replaceAll('demo-alpha', 'image-frame') }));
+    await context.route('https://unpermitted.example/**', route => route.fulfill({ contentType: 'text/html', body: '<p>Game domain awaiting permission</p>' }));
     const lobby = await context.newPage(); await lobby.goto('https://lobby.example/');
-    const opened = context.waitForEvent('page'); await lobby.getByRole('button', { name: '에볼루션 창 열기' }).click();
-    const gameWindow = await opened; await gameWindow.waitForLoadState();
-    const panelOpened = context.waitForEvent('page'); expect(bridge.openPanel()).toBe(true);
-    const panel = await panelOpened; await panel.waitForLoadState();
-    await panel.getByRole('button', { name: '열린 게임 창 확인', exact: true }).click();
+    // Create real Chrome popup windows explicitly; discovery must work without a toolbar or an activeTab grant.
+    await worker.evaluate(async () => {
+      await chrome.windows.create({ url: 'https://game.example/table', type: 'popup', width: 800, height: 600 });
+      await chrome.windows.create({ url: 'https://unpermitted.example/table', type: 'popup', width: 800, height: 600 });
+    });
+    expect(bridge.openPanel()).toBe(true);
+    await expect.poll(() => worker.evaluate(async () => (await chrome.tabs.query({})).filter(tab => tab.url === chrome.runtime.getURL('popup.html')).length), { timeout: 10000 }).toBe(2);
+    await popup.getByRole('button', { name: '열린 게임 창 확인', exact: true }).click();
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'game.example' && target.kind === 'window'), { timeout: 10000 }).toBe(true);
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'frame.example' && target.kind === 'frame')).toBe(true);
+    expect(bridge.info().targets.find(target => target.host === 'unpermitted.example')?.permission).toBe(false);
     expect(bridge.info().targets.filter(target => ['game.example', 'frame.example'].includes(target.host)).every(target => target.recognition === 'unconfigured')).toBe(true);
     expect(store.snapshot().rooms).toHaveLength(1);
     profile = { ...demoProfile, hosts: ['game.example', 'frame.example'] }; bridge.refreshProfile();

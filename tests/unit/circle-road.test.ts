@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeBeadBitmap, ImageRecognitionError } from '../../src/collector/bead-image';
-import { circleRoadBitmap, circleSequence } from '../fixtures/circle-road-bitmap';
+import { circleRoadBitmap, circleSequence, shortTieRoadBitmap, shortTieSequence } from '../fixtures/circle-road-bitmap';
 
 describe('circle-first big-road recognition', () => {
+  it('finds the green marker after the twelfth B/P circle in a 15-round chart', () => {
+    const image = shortTieRoadBitmap(), result = analyzeBeadBitmap(image.width, image.height, image.bitmap);
+    expect(result.outcomes).toEqual(shortTieSequence.filter(outcome => outcome !== 'T'));
+    expect(result.outcomes).toHaveLength(14); expect(result.tieAfter).toEqual([11]);
+  });
   it.each([12, 18.6, 23.4])('reads antialiased rings without any grey grid at pitch %s', pitch => {
     const image = circleRoadBitmap(circleSequence, pitch);
     const result = analyzeBeadBitmap(image.width, image.height, image.bitmap);

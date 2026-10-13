@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exampleOutcomes, smallRoadBitmap } from '../fixtures/road-bitmap';
-import { circleRoadBitmap, circleSequence } from '../fixtures/circle-road-bitmap';
+import { circleRoadBitmap, circleSequence, shortTieRoadBitmap, shortTieSequence } from '../fixtures/circle-road-bitmap';
 
 test('image Ctrl+V works on dashboard and focused inputs while text paste stays unchanged', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'baccarat-paste-')); let app: ElectronApplication | undefined;
@@ -30,7 +30,7 @@ test('image Ctrl+V works on dashboard and focused inputs while text paste stays 
     await copyRoad('big-road');
     const room = page.getByLabel('이미지 방 이름'); await room.fill('붙여넣기 방');
     await page.keyboard.press('Control+v');
-    await expect(page.getByTestId('image-detected-count')).toHaveText('35개 결과 인식 추정');
+    await expect(page.getByTestId('image-detected-count')).toHaveText('37개 결과 인식 추정');
     await expect(room).toHaveValue('붙여넣기 방');
     await copyRoad('bead');
     const sequence = page.getByLabel('이미지 슈'); await sequence.fill('BPT');
@@ -144,7 +144,7 @@ test('Ctrl+V reads a big road without grid lines, with tails and split tie rings
     await page.getByRole('heading', { name: 'Baccarat Live Analyzer', exact: true }).click();
     await page.keyboard.press('Control+v');
     const bp = circleSequence.filter(outcome => outcome !== 'T');
-    await expect(page.getByTestId('image-detected-count')).toHaveText(`${bp.length}개 결과 인식 추정`);
+    await expect(page.getByTestId('image-detected-count')).toHaveText(`${bp.length + 2}개 결과 인식 추정`);
     await expect(page.getByTestId('recognition-diagnostics')).toContainText('격자 후보 0개');
     await expect(page.getByTestId('recognition-diagnostics')).toContainText('원의 중심·둘레');
     for (let i = 0; i < bp.length; i++) await expect(page.getByLabel(`이미지 결과 ${i + 1}`, { exact: true })).toHaveValue(bp[i]);
@@ -161,6 +161,48 @@ test('Ctrl+V reads a big road without grid lines, with tails and split tie rings
     expect(snapshot.results.map(row => row.outcome)).toEqual(circleSequence);
     expect(snapshot.forecasts.filter(f => f.horizon === 1 && f.targetRound === circleSequence.length + 1)).toHaveLength(4);
     expect(snapshot.stats.comparisons).toBe(0);
+  } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('15-round tie review, original/150% zoom and larger text', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'baccarat-short-tie-')); let app: ElectronApplication | undefined;
+  try {
+    app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
+      args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
+    const page = await app.firstWindow(), road = shortTieRoadBitmap();
+    await app.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
+      const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
+    }, { width: road.width, height: road.height, bitmap: Buffer.from(road.bitmap).toString('base64') });
+    await page.getByRole('heading', { name: 'Baccarat Live Analyzer', exact: true }).click(); await page.keyboard.press('Control+v');
+    await expect(page.getByTestId('image-detected-count')).toHaveText('15개 결과 인식 추정');
+    await expect(page.getByTestId('image-tie-summary')).toContainText('B/P 원 14개 + 타이 1회 = 총 15회');
+    await expect(page.getByLabel('이미지 타이 결과 13', { exact: true })).toHaveText('T');
+    await expect(page.getByTestId('image-round-number').last()).toHaveText('15회차');
+    await expect(page.getByLabel('타이 횟수 12', { exact: true })).toHaveValue('1');
+    const preview = page.getByRole('img', { name: '붙여넣은 그림판 원본 이미지', exact: true });
+    await expect(page.getByRole('button', { name: '확대 150%', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(preview).toHaveCSS('width', '391.5px');
+    expect(await preview.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(261);
+    await page.getByRole('button', { name: '원본 100%', exact: true }).click(); await expect(preview).toHaveCSS('width', '261px');
+    await page.getByRole('button', { name: '확대 150%', exact: true }).click(); await expect(preview).toHaveCSS('width', '391.5px');
+    expect(await page.locator('.note').first().evaluate(node => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(14);
+    const confirmed = page.getByRole('checkbox'); await confirmed.check();
+    await page.getByLabel('타이 횟수 12', { exact: true }).fill('2'); await expect(confirmed).not.toBeChecked();
+    await expect(page.getByTestId('image-detected-count')).toHaveText('16개 결과 인식 추정');
+    await expect(page.getByLabel('이미지 타이 결과 14', { exact: true })).toHaveText('T');
+    await page.getByLabel('타이 횟수 12', { exact: true }).fill('');
+    await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
+    await page.getByLabel('타이 횟수 12', { exact: true }).fill('1');
+    await page.getByLabel('이미지 슈').fill('short-tie-1'); await confirmed.check();
+    await page.getByTestId('image-detected-count').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/short-tie-zoom.png' });
+    await page.getByRole('button', { name: '확인한 그림판 기록 저장' }).click();
+    await expect(page.getByTestId('total-results')).toHaveText('15');
+    const snapshot = await page.evaluate(() => window.analyzer.snapshot());
+    expect(snapshot.results.map(row => row.outcome)).toEqual(shortTieSequence);
+    expect(snapshot.results[12]).toMatchObject({ round: 13, outcome: 'T' });
+    expect(snapshot.forecasts.filter(f => f.horizon === 1 && f.targetRound === 16)).toHaveLength(4);
   } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
 });
 
@@ -189,7 +231,7 @@ test('small clipboard grids, missing outer borders, watermark, ties and stored f
       await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
     }, { width: road.width, height: road.height, bitmap: Buffer.from(road.bitmap).toString('base64') });
     await page.getByRole('button', { name: '클립보드 이미지 붙여넣기 (Ctrl+V)', exact: true }).click();
-    await expect(page.getByTestId('image-detected-count')).toHaveText('35개 결과 인식 추정');
+    await expect(page.getByTestId('image-detected-count')).toHaveText('37개 결과 인식 추정');
     await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
     const markers = page.locator('.tie-field input'); await expect(markers).toHaveCount(2);
     await markers.nth(0).fill('1'); await markers.nth(1).fill('2');

@@ -1,5 +1,12 @@
 import type { Outcome } from '../../src/shared/types';
 export const circleSequence = 'BPPBBBBBBBBTPPPPPPPTTBBPBPBPBPPBPPPBPBPBPBP'.split('') as Outcome[];
+export const shortTieSequence = 'BBPPPBBPBPPPTPP'.split('') as Outcome[];
+export function shortTieRoadBitmap() {
+  const source = circleRoadBitmap(shortTieSequence), width = 261, height = 116;
+  const bitmap = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) bitmap.set(source.bitmap.slice(y * source.width * 4, (y * source.width + width) * 4), y * width * 4);
+  return { width, height, bitmap };
+}
 
 // Screenshot-like fractional centers, thin antialiased outlines, green slashes,
 // pair dots and faint dividers. This is generated test data, not a user capture.

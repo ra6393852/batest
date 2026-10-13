@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { BeadImageResult } from '../collector/bead-image';
 import type { ImageReview, ImageSaveRequest, ImageSaveResult, Outcome } from '../shared/types';
 import type { AnalyzerStore } from './store';
+import { expandImageSequence } from '../shared/image-sequence';
 const requestSchema = z.object({
   reviewId: z.uuid(), roomName: z.string().trim().min(1).max(120),
   shoeId: z.string().trim().min(1).max(120).regex(/^[\p{L}\p{N} _.:/-]+$/u),
@@ -26,7 +27,7 @@ export class ImageImport {
       ties.set(tie.index, tie.count);
     }
     if (this.review.tieAfter.some(index => !ties.has(index))) throw new Error('초록 타이 표시의 횟수를 모두 확인하세요.');
-    const outcomes = input.outcomes.flatMap((outcome, index) => [outcome, ...Array<Outcome>(ties.get(index) ?? 0).fill('T')]);
+    const outcomes = expandImageSequence(input.outcomes, ties).map(entry => entry.outcome);
     if (outcomes.length > 500) throw new Error('한 번에 최대 500개 기록을 저장할 수 있습니다.');
     const roomId = `image:${createHash('sha256').update(input.roomName).digest('hex').slice(0, 24)}`;
     const previous = store.snapshot(roomId, input.shoeId);

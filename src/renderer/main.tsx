@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { methods, type AnalyzerAPI, type Snapshot, type Outcome, type ImageReview, type ImagePreview, type RecognitionDiagnostics } from '../shared/types';
 import { BASE } from '../analysis/engine';
+import { expandImageSequence } from '../shared/image-sequence';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
 const labels: Record<Outcome, string> = { B: '뱅커', P: '플레이어', T: '타이' };
@@ -11,6 +12,17 @@ const date = (value: string) => new Date(value).toLocaleString('ko-KR');
 function RecognitionDetails({ value }: { value?: RecognitionDiagnostics }) {
   if (!value) return null;
   return <p className="note" data-testid="recognition-diagnostics">인식 점검: {value.width}×{value.height} · 색 픽셀 {value.coloredPixels}개 · 격자 후보 {value.gridCandidates}개 · 원 후보 {value.circleCandidates}개 · 원 기반 6행 후보 {value.circleGrids}개<br/>{value.detail}</p>;
+}
+function ImageViewer({ src, alt }: { src: string; alt: string }) {
+  const [zoom, setZoom] = useState(1.5), [width, setWidth] = useState<number>();
+  return <div className="image-viewer">
+    <div className="image-zoom" role="group" aria-label="이미지 확대 보기">
+      <button className={zoom === 1 ? '' : 'secondary'} aria-pressed={zoom === 1} onClick={() => setZoom(1)}>원본 100%</button>
+      <button className={zoom === 1.5 ? '' : 'secondary'} aria-pressed={zoom === 1.5} onClick={() => setZoom(1.5)}>확대 150%</button>
+      <span>현재 {Math.round(zoom * 100)}% · 분석은 원본 이미지 사용</span>
+    </div>
+    <div className="image-viewport"><img src={src} alt={alt} onLoad={e => setWidth(e.currentTarget.naturalWidth)} style={{ width: width ? width * zoom : undefined }}/></div>
+  </div>;
 }
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
@@ -37,7 +49,7 @@ function App() {
       await window.analyzer.closeBrowser();
       const review = await window.analyzer.pasteImage();
       if (review && 'recognitionError' in review) { setImagePreview(review); setImageOutcomes([]); setTieCounts({}); }
-      else if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setTieCounts({}); setImageConfirmed(false); setImageSaved(''); }
+      else if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setTieCounts(Object.fromEntries(review.tieAfter.map(index => [index, '1']))); setImageConfirmed(false); setImageSaved(''); }
     } catch (error) { setError(error instanceof Error ? error.message.split('Error:').at(-1)!.trim() : '그림판 이미지를 읽지 못했습니다.'); }
     finally { imageReading.current = false; setBusy(false); }
   }
@@ -73,9 +85,12 @@ function App() {
   const s = snapshot?.stats;
   const latest = snapshot?.results.at(-1)?.round;
   const unresolvedTies = imageReview?.tieAfter.some(index => !Number.isInteger(Number(tieCounts[index])) || Number(tieCounts[index]) < 1 || Number(tieCounts[index]) > 20);
+  const validTies = new Map(Object.entries(tieCounts).filter(([, count]) => Number.isInteger(Number(count)) && Number(count) >= 1 && Number(count) <= 20).map(([index, count]) => [Number(index), Number(count)]));
+  const imageSequence = expandImageSequence(imageOutcomes, validTies);
+  const imageTieTotal = imageSequence.filter(entry => entry.tieOffset > 0).length;
   const next = snapshot?.forecasts.filter(f => f.horizon === 1 && f.targetRound === (latest ?? 0) + 1) ?? [];
   return <div className="app">
-    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.4.5</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.4.6</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">
       <div><b>클립보드 이미지 바로 붙여넣기</b><p>이미지가 복사되어 있으면 이 프로그램에서 <kbd>Ctrl</kbd> + <kbd>V</kbd><br/>새 캡처가 필요할 때: <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> → 그림판 드래그</p></div>
       <button disabled={busy} onClick={() => void readImage()}>클립보드 이미지 붙여넣기 (Ctrl+V)</button>
@@ -90,20 +105,27 @@ function App() {
           {imageSaved && <p role="status" data-testid="image-save-status">{imageSaved}</p>}
           {imagePreview && <div className="image-review" ref={reviewPanel}>
             <p role="status" data-testid="image-preview-status"><b>이미지 불러오기 완료</b> · 그림판 자동 인식 실패</p>
-            <img src={imagePreview.preview} alt="불러온 원본 이미지"/>
+            <ImageViewer key={imagePreview.preview} src={imagePreview.preview} alt="불러온 원본 이미지"/>
             <p>이미지는 들어왔습니다. 현재 이미지의 B/P/T 결과를 자동으로 읽지 못했습니다.</p>
             <p className="note">{imagePreview.recognitionError}</p>
             <RecognitionDetails value={imagePreview.diagnostics}/>
             <p className="note">결과를 읽기 전에는 통계에 저장하지 않습니다. 다른 그림판 이미지를 다시 붙여넣을 수 있습니다.</p>
           </div>}
           {imageReview && <div className="image-review" ref={reviewPanel}>
-            {imageReview.preview && <img src={imageReview.preview} alt="자동으로 찾은 그림판 원본 영역"/>}
+            {imageReview.preview && <ImageViewer key={imageReview.id} src={imageReview.preview} alt="붙여넣은 그림판 원본 이미지"/>}
             <p>{imageReview.preview ? imageReview.format === 'bead' ? '비드로드 인식' : '빅로드 인식 · 타이 횟수 확인 필요' : '직접 입력 기록 확인'}</p>
-            <p><b data-testid="image-detected-count">{imageOutcomes.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>
+            <p><b data-testid="image-detected-count">{imageSequence.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>
+            {imageReview.format === 'big-road' && <p className="tie-summary" data-testid="image-tie-summary">B/P 원 {imageOutcomes.length}개 + 타이 {imageTieTotal}회 = 총 {imageSequence.length}회{unresolvedTies ? ' · 타이 횟수 확인 대기' : ''}<br/>초록 표시당 타이 1회를 기본으로 넣었습니다. 원본에 표시된 횟수가 2회 이상이면 아래에서 수정하세요.</p>}
             <RecognitionDetails value={imageReview.diagnostics}/>
-            <div className="image-outcomes">{imageOutcomes.map((outcome, index) => <label key={index}>{imageStart + index}<select aria-label={`이미지 결과 ${index + 1}`} className={outcome} value={outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === index ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select>{imageReview.tieAfter.includes(index) && <span className="tie-field">초록 타이 횟수<input aria-label={`타이 횟수 ${index + 1}`} type="number" min={1} max={20} placeholder="확인 필요" value={tieCounts[index] ?? ''} onChange={e => { setTieCounts(previous => ({ ...previous, [index]: e.target.value })); setImageConfirmed(false); }}/></span>}</label>)}</div>
+            <div className="image-outcomes">{imageSequence.map((entry, chronologicalIndex) => <label key={`${entry.sourceIndex}:${entry.tieOffset}`}>
+              <span data-testid="image-round-number">{imageStart + chronologicalIndex}회차</span>
+              {entry.tieOffset ? <span className="tie-result T" data-testid="image-tie-result" aria-label={`이미지 타이 결과 ${imageStart + chronologicalIndex}`}>T</span> : <>
+                <select aria-label={`이미지 결과 ${entry.sourceIndex + 1}`} aria-description={`${imageStart + chronologicalIndex}회차`} className={entry.outcome} value={entry.outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === entry.sourceIndex ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select>
+                {imageReview.tieAfter.includes(entry.sourceIndex) && <span className="tie-field">뒤에 붙는 타이 횟수<input aria-label={`타이 횟수 ${entry.sourceIndex + 1}`} type="number" min={1} max={20} placeholder="확인 필요" value={tieCounts[entry.sourceIndex] ?? ''} onChange={e => { setTieCounts(previous => ({ ...previous, [entry.sourceIndex]: e.target.value })); setImageConfirmed(false); }}/></span>}
+              </>}
+            </label>)}</div>
             {imageReview.warnings.map(warning => <p className="note" key={warning}>{warning}</p>)}
-            <label className="image-confirm"><input type="checkbox" checked={imageConfirmed} onChange={e => setImageConfirmed(e.target.checked)}/>원본의 B/P/T 순서와 방·슈·시작 번호를 확인했습니다.</label>
+            <label className="image-confirm"><input type="checkbox" checked={imageConfirmed} onChange={e => setImageConfirmed(e.target.checked)}/>원본의 B/P/T 순서·타이 횟수와 방·슈·시작 번호를 확인했습니다.</label>
             <button disabled={busy || !imageConfirmed || unresolvedTies || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
           </div>}
         </section>

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { AnalyzerStore } from '../../src/main/store';
 import { ImageImport } from '../../src/main/image-import';
 import type { Outcome } from '../../src/shared/types';
+import { shortTieSequence } from '../fixtures/circle-road-bitmap';
 let store: AnalyzerStore, folder: string, importer: ImageImport;
 const sequence: Outcome[] = ['B', 'P', 'T', 'B', 'B', 'P', 'T'];
 const analysis = { outcomes: sequence, confidence: 0.8, bounds: { x: 0, y: 0, width: 10, height: 10 }, warnings: ['확인 필요'], format: 'bead' as const, tieAfter: [] };
@@ -15,6 +16,16 @@ function save(outcomes = sequence, shoeId = 'image-shoe-1', startRound = 1) {
   return importer.save({ reviewId: review.id, roomName: '이미지 방', shoeId, startRound, outcomes }, store);
 }
 describe('confirmed image records', () => {
+  it('saves the thirteenth tie as a separate round and forecasts round sixteen', () => {
+    const bp = shortTieSequence.filter(outcome => outcome !== 'T');
+    const review = importer.create({ ...analysis, outcomes: bp, format: 'big-road', tieAfter: [11] }, 'preview');
+    const result = importer.save({ reviewId: review.id, roomName: '15회 그림판', shoeId: 'short-tie', startRound: 1, outcomes: bp, tiesAfter: [{ index: 11, count: 1 }] }, store);
+    const snapshot = store.snapshot(result.roomId, result.shoeId);
+    expect(result.added).toBe(15); expect(snapshot.results.map(row => row.outcome)).toEqual(shortTieSequence);
+    expect(snapshot.results[12]).toMatchObject({ round: 13, outcome: 'T' });
+    expect(snapshot.forecasts.filter(f => f.targetRound === 16 && f.horizon === 1)).toHaveLength(4);
+    expect(snapshot.stats.comparisons).toBe(0);
+  });
   it('requires every big-road tie marker to be confirmed and expands ties in chronological order', () => {
     const review = importer.create({ ...analysis, format: 'big-road', tieAfter: [1, 5] }, 'preview');
     const input = { reviewId: review.id, roomName: '빅로드 방', shoeId: 's1', startRound: 1, outcomes: sequence.map(o => o === 'T' ? 'P' as const : o) };

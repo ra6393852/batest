@@ -76,8 +76,11 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
       await chrome.windows.create({ url: 'https://game.example/table', type: 'popup', width: 800, height: 600 });
       await chrome.windows.create({ url: 'https://unpermitted.example/table', type: 'popup', width: 800, height: 600 });
     });
+    const tabCount = await worker.evaluate(async () => (await chrome.tabs.query({})).length);
     expect(bridge.openPanel()).toBe(true);
-    await expect.poll(() => worker.evaluate(async () => (await chrome.tabs.query({})).filter(tab => tab.url === chrome.runtime.getURL('popup.html')).length), { timeout: 10000 }).toBe(2);
+    // Without the broad tabs permission, Chrome omits the URL of extension UI tabs.
+    // Verify a new tab was opened using IDs/counts, not unavailable privileged URL metadata.
+    await expect.poll(() => worker.evaluate(async () => (await chrome.tabs.query({})).length), { timeout: 10000 }).toBe(tabCount + 1);
     await popup.getByRole('button', { name: '열린 게임 창 확인', exact: true }).click();
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'game.example' && target.kind === 'window'), { timeout: 10000 }).toBe(true);
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'frame.example' && target.kind === 'frame')).toBe(true);

@@ -14,7 +14,7 @@ export class ImageImport {
   invalidate() { this.review = null; }
   create(analysis: BeadImageResult, preview: string): ImageReview {
     const id = randomUUID(); this.review = { id, count: analysis.outcomes.length, expires: Date.now() + 600000, format: analysis.format, tieAfter: [...analysis.tieAfter] };
-    return { id, outcomes: [...analysis.outcomes], confidence: analysis.confidence, preview, warnings: [...analysis.warnings], format: analysis.format, tieAfter: [...analysis.tieAfter] };
+    return { id, outcomes: [...analysis.outcomes], confidence: analysis.confidence, preview, warnings: [...analysis.warnings], format: analysis.format, tieAfter: [...analysis.tieAfter], diagnostics: analysis.diagnostics };
   }
   save(raw: ImageSaveRequest, store: AnalyzerStore): ImageSaveResult {
     const input = requestSchema.parse(raw);

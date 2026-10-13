@@ -1,5 +1,7 @@
 # Linux 클라우드 개발·검증
 
+0.4.5는 원 중심·둘레 기반 빅로드 인식과 실패 단계별 진단을 추가했습니다. `bash scripts/test-cloud.sh`의 단위 78개와 Linux Electron 5개 테스트가 통과했습니다. Windows CI는 소스/무설치 EXE에서 Chrome 모듈을 포함해 각각 6개를 실행합니다. 사용자 첨부 원본 대신 격자 없는 원/초록 사선/쌍/소수점 간격/꺾임 재현 fixture를 사용했습니다.
+
 0.4.4의 기본 UI는 클립보드 입력 전용입니다. Linux 검증은 단위 테스트 70개와 Electron 4개이며, Windows CI는 소스와 압축 해제한 무설치 EXE에서 내부 Chrome 모듈을 포함해 각각 5개를 검사합니다. Chrome 서버는 명시적 `--enable-chrome-bridge` 개발 실행에서만 시작합니다. 아래 버전별 UI/검증 설명은 과거 기록입니다.
 
 0.4.2의 Windows 배포는 무설치 ZIP입니다. `npm run dist:win`은 x64 ZIP을 만들고, Windows CI는 압축을 푼 EXE에서 5개 데스크톱 테스트를 실행합니다. 현재 Linux 검증은 단위 테스트 64개와 Electron 테스트 4개입니다. 아래 버전별 설치 EXE/NSIS 설명은 과거 검증 기록입니다.

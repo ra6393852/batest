@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { methods, type AnalyzerAPI, type Snapshot, type Outcome, type ImageReview, type ImagePreview } from '../shared/types';
+import { methods, type AnalyzerAPI, type Snapshot, type Outcome, type ImageReview, type ImagePreview, type RecognitionDiagnostics } from '../shared/types';
 import { BASE } from '../analysis/engine';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
@@ -8,6 +8,10 @@ const labels: Record<Outcome, string> = { B: '뱅커', P: '플레이어', T: '�
 const methodNames = { A: '기본 이론값', B: '최근 흐름', C: '연속 패턴', D: '전체 패턴' };
 const percent = (value: number | null) => value === null ? '—' : `${(value * 100).toFixed(2)}%`;
 const date = (value: string) => new Date(value).toLocaleString('ko-KR');
+function RecognitionDetails({ value }: { value?: RecognitionDiagnostics }) {
+  if (!value) return null;
+  return <p className="note" data-testid="recognition-diagnostics">인식 점검: {value.width}×{value.height} · 색 픽셀 {value.coloredPixels}개 · 격자 후보 {value.gridCandidates}개 · 원 후보 {value.circleCandidates}개 · 원 기반 6행 후보 {value.circleGrids}개<br/>{value.detail}</p>;
+}
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [selectedRoom, setRoom] = useState<string>(), [selectedShoe, setShoe] = useState<string>();
@@ -71,7 +75,7 @@ function App() {
   const unresolvedTies = imageReview?.tieAfter.some(index => !Number.isInteger(Number(tieCounts[index])) || Number(tieCounts[index]) < 1 || Number(tieCounts[index]) > 20);
   const next = snapshot?.forecasts.filter(f => f.horizon === 1 && f.targetRound === (latest ?? 0) + 1) ?? [];
   return <div className="app">
-    <header><div><span className="eyebrow">READ-ONLY ANALYTICS</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.4.5</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">
       <div><b>클립보드 이미지 바로 붙여넣기</b><p>이미지가 복사되어 있으면 이 프로그램에서 <kbd>Ctrl</kbd> + <kbd>V</kbd><br/>새 캡처가 필요할 때: <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> → 그림판 드래그</p></div>
       <button disabled={busy} onClick={() => void readImage()}>클립보드 이미지 붙여넣기 (Ctrl+V)</button>
@@ -89,12 +93,14 @@ function App() {
             <img src={imagePreview.preview} alt="불러온 원본 이미지"/>
             <p>이미지는 들어왔습니다. 현재 이미지의 B/P/T 결과를 자동으로 읽지 못했습니다.</p>
             <p className="note">{imagePreview.recognitionError}</p>
+            <RecognitionDetails value={imagePreview.diagnostics}/>
             <p className="note">결과를 읽기 전에는 통계에 저장하지 않습니다. 다른 그림판 이미지를 다시 붙여넣을 수 있습니다.</p>
           </div>}
           {imageReview && <div className="image-review" ref={reviewPanel}>
             {imageReview.preview && <img src={imageReview.preview} alt="자동으로 찾은 그림판 원본 영역"/>}
             <p>{imageReview.preview ? imageReview.format === 'bead' ? '비드로드 인식' : '빅로드 인식 · 타이 횟수 확인 필요' : '직접 입력 기록 확인'}</p>
             <p><b data-testid="image-detected-count">{imageOutcomes.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>
+            <RecognitionDetails value={imageReview.diagnostics}/>
             <div className="image-outcomes">{imageOutcomes.map((outcome, index) => <label key={index}>{imageStart + index}<select aria-label={`이미지 결과 ${index + 1}`} className={outcome} value={outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === index ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select>{imageReview.tieAfter.includes(index) && <span className="tie-field">초록 타이 횟수<input aria-label={`타이 횟수 ${index + 1}`} type="number" min={1} max={20} placeholder="확인 필요" value={tieCounts[index] ?? ''} onChange={e => { setTieCounts(previous => ({ ...previous, [index]: e.target.value })); setImageConfirmed(false); }}/></span>}</label>)}</div>
             {imageReview.warnings.map(warning => <p className="note" key={warning}>{warning}</p>)}
             <label className="image-confirm"><input type="checkbox" checked={imageConfirmed} onChange={e => setImageConfirmed(e.target.checked)}/>원본의 B/P/T 순서와 방·슈·시작 번호를 확인했습니다.</label>

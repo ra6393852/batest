@@ -1,6 +1,6 @@
 {
   "name": "baccarat-live-analyzer",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "private": true,
   "description": "Read-only baccarat result recording and statistical comparison",
   "author": "Baccarat Live Analyzer contributors",

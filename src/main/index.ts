@@ -10,7 +10,7 @@ import { parseOCR } from '../collector/ocr';
 import { ObservationTracker } from '../collector/dom';
 import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
-import { analyzeBeadBitmap } from '../collector/bead-image';
+import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
 
@@ -32,7 +32,7 @@ function inspectImage(image: NativeImage): ImageReview | ImagePreview {
     // Successful image intake remains visible even when chart recognition fails.
     // No review ID or outcomes are issued, so this preview cannot be stored as results.
     const preview = width > 900 || height > 600 ? image.resize({ width: Math.max(1, Math.round(width * Math.min(900 / width, 600 / height))) }) : image;
-    return { preview: preview.toDataURL(), recognitionError: error instanceof Error ? error.message : '그림판 결과를 자동으로 읽지 못했습니다.' };
+    return { preview: preview.toDataURL(), recognitionError: error instanceof Error ? error.message : '그림판 결과를 자동으로 읽지 못했습니다.', diagnostics: error instanceof ImageRecognitionError ? error.diagnostics : undefined };
   }
   const crop = image.crop(analysis.bounds);
   return imageImport.create(analysis, (crop.getSize().width > 900 ? crop.resize({ width: 900 }) : crop).toDataURL());

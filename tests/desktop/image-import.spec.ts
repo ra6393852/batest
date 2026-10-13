@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exampleOutcomes, smallRoadBitmap } from '../fixtures/road-bitmap';
+import { circleRoadBitmap, circleSequence } from '../fixtures/circle-road-bitmap';
 
 test('image Ctrl+V works on dashboard and focused inputs while text paste stays unchanged', async () => {
   const folder = mkdtempSync(join(tmpdir(), 'baccarat-paste-')); let app: ElectronApplication | undefined;
@@ -55,6 +56,8 @@ test('image Ctrl+V works on dashboard and focused inputs while text paste stays 
     await expect(page.getByRole('img', { name: '불러온 원본 이미지', exact: true })).toBeVisible();
     await expect(page.getByTestId('image-detected-count')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toHaveCount(0);
+    await expect(page.getByTestId('recognition-diagnostics')).toContainText('80×60');
+    await expect(page.getByTestId('recognition-diagnostics')).toContainText('원 후보 0개');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.evaluate(reviewId => window.analyzer.saveImage({ reviewId, roomName: 'stale', shoeId: 's', startRound: 1, outcomes: ['B', 'P', 'T'] }), oldReview.id)).rejects.toThrow('다시 읽고');
     expect((await page.evaluate(() => window.analyzer.snapshot())).results).toHaveLength(0);
@@ -125,6 +128,39 @@ test('clipboard preview, correction, confirmation, deduplication and restart per
     await app.close(); app = await launch(); const reopened = await app.firstWindow();
     await expect(reopened.getByTestId('total-results')).toHaveText('9');
     expect((await reopened.evaluate(() => window.analyzer.snapshot())).results[0].outcome).toBe('P');
+  } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('Ctrl+V reads a big road without grid lines, with tails and split tie rings', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'baccarat-circle-road-')); let app: ElectronApplication | undefined;
+  try {
+    app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
+      args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
+    const page = await app.firstWindow(), road = circleRoadBitmap();
+    await app.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
+      const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
+    }, { width: road.width, height: road.height, bitmap: Buffer.from(road.bitmap).toString('base64') });
+    await page.getByRole('heading', { name: 'Baccarat Live Analyzer', exact: true }).click();
+    await page.keyboard.press('Control+v');
+    const bp = circleSequence.filter(outcome => outcome !== 'T');
+    await expect(page.getByTestId('image-detected-count')).toHaveText(`${bp.length}개 결과 인식 추정`);
+    await expect(page.getByTestId('recognition-diagnostics')).toContainText('격자 후보 0개');
+    await expect(page.getByTestId('recognition-diagnostics')).toContainText('원의 중심·둘레');
+    for (let i = 0; i < bp.length; i++) await expect(page.getByLabel(`이미지 결과 ${i + 1}`, { exact: true })).toHaveValue(bp[i]);
+    expect((await page.evaluate(() => window.analyzer.snapshot())).results).toHaveLength(0);
+    await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
+    await page.getByLabel('이미지 방 이름').fill('원 기반 분석 테스트'); await page.getByLabel('이미지 슈').fill('circle-road-1');
+    await page.locator('.tie-field input').nth(0).fill('1'); await page.locator('.tie-field input').nth(1).fill('2');
+    await page.getByRole('checkbox').check();
+    await page.getByTestId('image-detected-count').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: 'test-results/circle-road-recognized.png' });
+    await page.getByRole('button', { name: '확인한 그림판 기록 저장' }).click();
+    await expect(page.getByTestId('total-results')).toHaveText(String(circleSequence.length));
+    const snapshot = await page.evaluate(() => window.analyzer.snapshot());
+    expect(snapshot.results.map(row => row.outcome)).toEqual(circleSequence);
+    expect(snapshot.forecasts.filter(f => f.horizon === 1 && f.targetRound === circleSequence.length + 1)).toHaveLength(4);
+    expect(snapshot.stats.comparisons).toBe(0);
   } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
 });
 

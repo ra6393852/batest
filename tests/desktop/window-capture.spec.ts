@@ -11,7 +11,7 @@ test('native game-window capture updates images, automatically switches rooms an
     const page=await app.firstWindow();await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer'})).toBeVisible();
     await app.evaluate(async({BrowserWindow})=>{
       const fixture=new BrowserWindow({width:900,height:650,x:0,y:0,useContentSize:true,frame:false,title:'Baccarat Capture Fixture',webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
-      await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><h1 id="room" style="color:white;font-size:28px;margin:16px">Speed Baccarat A</h1><div id="count" style="position:absolute;left:680px;top:490px;color:white;font-size:26px"># 22</div><canvas id="board" width="350" height="128" style="position:absolute;left:10px;top:514px"></canvas></body>'));
+      await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><h1 id="room" style="position:absolute;top:112px;color:white;font-size:28px;margin:16px">Speed Baccarat A</h1><div id="count" style="position:absolute;left:680px;top:490px;color:white;font-size:26px"># 22</div><canvas id="board" width="350" height="128" style="position:absolute;left:10px;top:514px"></canvas></body>'));
     });
     await expect.poll(()=>app!.windows().some(p=>p.url().startsWith('data:text/html'))).toBe(true);
     const game=app.windows().find(p=>p.url().startsWith('data:text/html'))!;

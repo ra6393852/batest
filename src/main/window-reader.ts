@@ -1,7 +1,7 @@
 import type { NativeImage } from 'electron';
 import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { join } from 'node:path';
-import { countFromLines, roomFromLines, type TextLine } from '../collector/window-text';
+import { countFromLines, roomFromLines, counterDigitsConfidence, type TextLine } from '../collector/window-text';
 export class WindowReader {
   private worker?:Promise<Worker>;
   private counter?:Promise<Worker>;
@@ -17,7 +17,8 @@ export class WindowReader {
   }
   async read(image:NativeImage){
     const {width,height}=image.getSize();
-    const header=image.crop({x:0,y:0,width:Math.floor(width*.65),height:Math.max(1,Math.floor(height*.16))});
+    // Include Chrome's title/address bars above the actual game table header.
+    const header=image.crop({x:0,y:0,width:Math.floor(width*.65),height:Math.max(1,Math.floor(height*.28))});
     const footer=image.crop({x:Math.floor(width*.65),y:Math.floor(height*.72),width:width-Math.floor(width*.65),height:height-Math.floor(height*.72)});
     const headerLines=await this.lines(header.resize({width:Math.floor(width*.65*2)}));
     const roomName=roomFromLines(headerLines);
@@ -29,8 +30,7 @@ export class WindowReader {
     await counter.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT,tessedit_char_whitelist:'#0123456789PBT '});
     const {data}=await counter.recognize(footer.resize({width:Math.floor(width*.35*3)}).toPNG(),{},{blocks:true});
     const countLines=data.blocks?.flatMap(b=>b.paragraphs.flatMap(p=>p.lines.map(l=>{
-      const digits=l.words.flatMap(w=>w.symbols).filter(s=>/^[0-9]$/.test(s.text));
-      return {text:l.text,confidence:digits.length?Math.min(...digits.map(s=>s.confidence)):0};
+      return {text:l.text,confidence:counterDigitsConfidence(l.words.flatMap(w=>w.symbols))};
     })))??[];
     return {roomName,total:countFromLines(countLines)};
   }

@@ -1,4 +1,11 @@
 export interface TextLine { text: string; confidence: number }
+export function counterDigitsConfidence(symbols:Array<{text:string;confidence:number}>):number {
+  const glyphs=symbols.filter(s=>s.text.trim());const hash=glyphs.findIndex(s=>s.text.trim()==='#');
+  if(hash<0)return 0;
+  const digits:Array<{text:string;confidence:number}>=[];
+  for(const symbol of glyphs.slice(hash+1)){if(!/^[0-9]$/.test(symbol.text.trim()))break;digits.push(symbol);}
+  return digits.length>=1&&digits.length<=3?Math.min(...digits.map(s=>s.confidence)):0;
+}
 // Accept named table headers only. A lobby containing several tables is ambiguous.
 export function roomFromLines(lines: TextLine[]): string | null {
   const rooms=new Set<string>();

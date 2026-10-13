@@ -1,7 +1,7 @@
 import { describe,it,expect } from 'vitest';
 import { AnalyzerStore } from '../../src/main/store';
 import { LiveSession,type LiveFrame } from '../../src/main/live-session';
-import { roomFromLines,countFromLines } from '../../src/collector/window-text';
+import { roomFromLines,countFromLines,counterDigitsConfidence } from '../../src/collector/window-text';
 import { analyzeBeadBitmap } from '../../src/collector/bead-image';
 import { beadColorConfidence } from '../../src/collector/frame-color';
 import { smallRoadBitmap,exampleOutcomes } from '../fixtures/road-bitmap';
@@ -19,6 +19,7 @@ describe('automatic visual room collection',()=>{
     expect(roomFromLines([{text:'Speed Baccarat A Speed Baccarat B',confidence:95}])).toBeNull();
     expect(countFromLines([{text:'# 57 P 32 B 23 T 2',confidence:90}])).toBe(57);
     expect(countFromLines([{text:'# 23:10:26',confidence:95},{text:'# 57',confidence:95}])).toBe(57);
+    expect(counterDigitsConfidence([{text:'#',confidence:20},{text:'5',confidence:95},{text:'7',confidence:93},{text:'P',confidence:40},{text:'3',confidence:30}])).toBe(93);
   });
   it('reads a filled bead board alongside a hollow big road in automatic mode and measures its ink',()=>{
     const image=smallRoadBitmap('bead');

@@ -44,8 +44,8 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
-  analyzeImage(): Promise<ImageReview | null>;
-  pasteImage(): Promise<ImageReview>;
+  analyzeImage(): Promise<ImageReview | ImagePreview | null>;
+  pasteImage(): Promise<ImageReview | ImagePreview>;
   reviewSequence(sequence: string): Promise<ImageReview>;
   appendManual(input: { roomId: string; shoeId: string; round: number; outcome: Outcome }): Promise<void>;
   saveImage(request: ImageSaveRequest): Promise<ImageSaveResult>;
@@ -68,6 +68,7 @@ export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];
   format: 'bead' | 'big-road'; tieAfter: number[];
 }
+export interface ImagePreview { preview: string; recognitionError: string }
 export interface ImageSaveRequest { reviewId: string; roomName: string; shoeId: string; startRound: number; outcomes: Outcome[]; tiesAfter?: Array<{ index: number; count: number }> }
 export interface ImageSaveResult { roomId: string; shoeId: string; added: number; pending: number }
 export interface ChromeConnection {

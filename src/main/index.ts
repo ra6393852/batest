@@ -12,7 +12,7 @@ import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
 import { analyzeBeadBitmap } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
-import type { AdapterProfile, CollectorStatus } from '../shared/types';
+import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
 
 let store: AnalyzerStore, window: BrowserWindow, browser: WebContentsView | undefined;
 let mode: 'site' | 'demo' = 'site', profile: AdapterProfile | null = null;
@@ -21,11 +21,19 @@ let ocrBusy = false, ocrTracker = new ObservationTracker();
 let lastOCR = '';
 let chromeBridge: ChromeBridge | undefined;
 const imageImport = new ImageImport();
-function inspectImage(image: NativeImage) {
+function inspectImage(image: NativeImage): ImageReview | ImagePreview {
+  imageImport.invalidate();
   if (image.isEmpty()) throw new Error('이미지가 없습니다. 그림판을 캡처해 복사한 뒤 이미지 붙여넣기를 누르세요.');
   const { width, height } = image.getSize();
   if (width * height > 12_000_000) throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
-  const analysis = analyzeBeadBitmap(width, height, image.toBitmap());
+  let analysis;
+  try { analysis = analyzeBeadBitmap(width, height, image.toBitmap()); }
+  catch (error) {
+    // Successful image intake remains visible even when chart recognition fails.
+    // No review ID or outcomes are issued, so this preview cannot be stored as results.
+    const preview = width > 900 || height > 600 ? image.resize({ width: Math.max(1, Math.round(width * Math.min(900 / width, 600 / height))) }) : image;
+    return { preview: preview.toDataURL(), recognitionError: error instanceof Error ? error.message : '그림판 결과를 자동으로 읽지 못했습니다.' };
+  }
   const crop = image.crop(analysis.bounds);
   return imageImport.create(analysis, (crop.getSize().width > 900 ? crop.resize({ width: 900 }) : crop).toDataURL());
 }
@@ -120,6 +128,7 @@ void app.whenReady().then(async () => {
   });
   // Explicit user action only. Never read clipboard text/passwords or poll it in the background.
   ipcMain.handle('image:paste', async event => { local(event);
+    imageImport.invalidate();
     const items = await clipboard.read();
     for (const item of items) {
       const type = item.types.find(type => ['image/png', 'image/jpeg', 'image/bmp'].includes(type));

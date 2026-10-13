@@ -11,6 +11,7 @@ const requestSchema = z.object({
 }).strict();
 export class ImageImport {
   private review: { id: string; count: number; expires: number; format: 'bead' | 'big-road'; tieAfter: number[] } | null = null;
+  invalidate() { this.review = null; }
   create(analysis: BeadImageResult, preview: string): ImageReview {
     const id = randomUUID(); this.review = { id, count: analysis.outcomes.length, expires: Date.now() + 600000, format: analysis.format, tieAfter: [...analysis.tieAfter] };
     return { id, outcomes: [...analysis.outcomes], confidence: analysis.confidence, preview, warnings: [...analysis.warnings], format: analysis.format, tieAfter: [...analysis.tieAfter] };

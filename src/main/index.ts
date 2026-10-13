@@ -1,7 +1,7 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, nativeImage, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { z } from 'zod';
 import { AnalyzerStore } from './store';
 import { SITE_URL, navigationAllowed } from './browser-policy';
@@ -9,6 +9,8 @@ import { profileSchema, observationsSchema, observationSchema } from '../shared/
 import { parseOCR } from '../collector/ocr';
 import { ObservationTracker } from '../collector/dom';
 import { ChromeBridge } from './chrome-bridge';
+import { ImageImport } from './image-import';
+import { analyzeBeadBitmap } from '../collector/bead-image';
 import type { AdapterProfile, CollectorStatus } from '../shared/types';
 
 let store: AnalyzerStore, window: BrowserWindow, browser: WebContentsView | undefined;
@@ -17,6 +19,7 @@ let ocrWorker: import('tesseract.js').Worker | undefined;
 let ocrBusy = false, ocrTracker = new ObservationTracker();
 let lastOCR = '';
 let chromeBridge: ChromeBridge | undefined;
+const imageImport = new ImageImport();
 const rendererPath = join(__dirname, '../renderer/index.html');
 const demoPath = join(__dirname, '../fixtures/table.html');
 const rendererURL = pathToFileURL(rendererPath).href;
@@ -91,12 +94,31 @@ void app.whenReady().then(async () => {
       await chromeBridge.close(); chromeBridge = undefined;
     }
   }
-  ipcMain.handle('chrome:info', event => { local(event); return chromeBridge?.info() ?? { state: isSmoke ? 'waiting' : 'error', paired: false, pairingCode: null, tabs: 0,
+  ipcMain.handle('chrome:info', event => { local(event); return chromeBridge?.info() ?? { state: isSmoke ? 'waiting' : 'error', paired: false, pairingCode: null, tabs: 0, targets: [], profileConfigured: false,
     message: isSmoke ? '로컬 테스트 모드 · Chrome 연결 꺼짐' : 'Chrome 연결 포트 38741 사용 실패 · 다른 분석기 인스턴스를 확인하세요.' }; });
   ipcMain.handle('chrome:reset', event => { local(event); chromeBridge?.reset(); });
+  ipcMain.handle('chrome:open-panel', event => { local(event); return chromeBridge?.openPanel() ?? false; });
   ipcMain.handle('chrome:extension-folder', async event => { local(event);
     const folder = app.isPackaged ? join(process.resourcesPath, 'chrome-extension') : join(app.getAppPath(), 'dist/extension');
     const error = await shell.openPath(folder); if (error) throw new Error('확장 폴더를 열지 못했습니다.'); return folder;
+  });
+  ipcMain.handle('image:analyze', async event => { local(event);
+    const selected = await dialog.showOpenDialog(window, { properties: ['openFile'], filters: [{ name: '그림판 이미지', extensions: ['png', 'jpg', 'jpeg', 'bmp'] }] });
+    if (selected.canceled || !selected.filePaths[0]) return null;
+    const file = selected.filePaths[0];
+    if (statSync(file).size > 10_000_000) throw new Error('이미지는 최대 10MB까지 읽을 수 있습니다.');
+    const image = nativeImage.createFromBuffer(readFileSync(file));
+    if (image.isEmpty()) throw new Error('PNG/JPG/BMP 이미지를 읽지 못했습니다.');
+    const { width, height } = image.getSize();
+    if (width * height > 12_000_000) throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
+    const analysis = analyzeBeadBitmap(width, height, image.toBitmap());
+    const crop = image.crop(analysis.bounds);
+    const preview = (crop.getSize().width > 900 ? crop.resize({ width: 900 }) : crop).toDataURL();
+    return imageImport.create(analysis, preview);
+  });
+  ipcMain.handle('image:save', (event, raw) => { local(event);
+    const result = imageImport.save(raw, store); changed();
+    status('idle', `그림판 확인 저장 · 새 기록 ${result.added}개${result.pending ? ` · 충돌 확인 대기 ${result.pending}개` : ''}`, 'visible-only'); return result;
   });
   ipcMain.handle('analyzer:snapshot', (event, room, shoe) => { local(event); return store.snapshot(z.string().max(120).optional().parse(room), z.string().max(120).optional().parse(shoe)); });
   ipcMain.handle('browser:open', async (event, selected) => { local(event); await openBrowser(z.enum(['site', 'demo']).parse(selected)); });

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { methods, type AnalyzerAPI, type CollectorStatus, type ChromeConnection, type Snapshot, type Outcome } from '../shared/types';
+import { methods, type AnalyzerAPI, type CollectorStatus, type ChromeConnection, type Snapshot, type Outcome, type ImageReview } from '../shared/types';
 import { BASE } from '../analysis/engine';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
@@ -14,6 +14,8 @@ function App() {
   const [status, setStatus] = useState<CollectorStatus>({ state: 'idle', message: 'Chrome에서 로그인·에볼루션 접속 후 확장의 프로그램 실행을 누르세요.', history: 'unknown' });
   const [chrome, setChrome] = useState<ChromeConnection>(), [extensionFolder, setExtensionFolder] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [imageReview, setImageReview] = useState<ImageReview>(), [imageOutcomes, setImageOutcomes] = useState<Outcome[]>([]), [imageConfirmed, setImageConfirmed] = useState(false);
+  const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
   const slot = useRef<HTMLDivElement>(null), request = useRef(0);
   const load = useCallback(async () => {
     const id = ++request.current;
@@ -35,13 +37,34 @@ function App() {
     return () => { resize.disconnect(); window.removeEventListener('resize', bounds); }; }, [bounds]);
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(''); try { await fn(); await load(); } catch { setError('작업 실패 · 입력 형식이나 기존 회차 충돌을 확인하세요.'); } finally { setBusy(false); } }
   async function open(mode: 'site' | 'demo') { setBrowserOpen(true); await window.analyzer.open(mode); requestAnimationFrame(bounds); }
+  async function readImage() {
+    setBusy(true); setError('');
+    try {
+      if (browserOpen) { await window.analyzer.closeBrowser(); setBrowserOpen(false); }
+      const review = await window.analyzer.analyzeImage();
+      if (review) { setImageReview(review); setImageOutcomes(review.outcomes); setImageConfirmed(false); setImageSaved(''); }
+    } catch (error) { setError(error instanceof Error ? error.message.split('Error:').at(-1)!.trim() : '그림판 이미지를 읽지 못했습니다.'); }
+    finally { setBusy(false); }
+  }
+  async function saveImage() {
+    if (!imageReview || !imageConfirmed) return;
+    setBusy(true); setError('');
+    try {
+      const result = await window.analyzer.saveImage({ reviewId: imageReview.id, roomName: imageRoom, shoeId: imageShoe, startRound: imageStart, outcomes: imageOutcomes });
+      setRoom(result.roomId); setShoe(result.shoeId); setImageReview(undefined);
+      setImageSaved(`새 기록 ${result.added}개 저장 · 중복 기록은 추가하지 않습니다.${result.pending ? ` 충돌 ${result.pending}개는 확인 대기입니다.` : ''}`);
+    } catch { setError('저장 실패 · 방 이름·슈·시작 번호를 확인하고, 만료된 이미지는 다시 읽어주세요.'); }
+    finally { setBusy(false); }
+  }
   const s = snapshot?.stats;
   const latest = snapshot?.results.at(-1)?.round;
   const next = snapshot?.forecasts.filter(f => f.horizon === 1 && f.targetRound === (latest ?? 0) + 1) ?? [];
   return <div className="app">
     <header><div><span className="eyebrow">READ-ONLY ANALYTICS</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <nav>
+      <button disabled={busy} onClick={() => void readImage()}>그림판 이미지 분석</button>
       <button disabled={busy} onClick={() => void action(async () => setExtensionFolder(await window.analyzer.chromeExtensionFolder()))}>Chrome 확장 설치 폴더</button>
+      <button className="secondary" disabled={busy || chrome?.state !== 'connected'} onClick={() => void action(async () => { if (!await window.analyzer.chromeOpenPanel()) setError('Chrome 확장 연결을 먼저 확인하세요.'); })}>게임 창 확인</button>
       <button className="secondary" disabled={busy} onClick={() => void action(() => open('demo'))}>테스트 화면</button>
       <button className="secondary" disabled={busy} onClick={() => void action(() => window.analyzer.importProfile())}>허용된 프로필 가져오기</button>
       {browserOpen && <button className="quiet" onClick={() => void action(async () => { await window.analyzer.closeBrowser(); setBrowserOpen(false); })}>브라우저 닫기</button>}
@@ -50,10 +73,32 @@ function App() {
     {error && <div role="alert" className="error">{error}</div>}
     <main>
       <div className="left-pane">
+        {!browserOpen && <section className="image-panel"><div className="panel-title"><h2>그림판 이미지 분석</h2><span>Chrome 연결 없이 사용 가능</span></div>
+          <p className="note">PNG/JPG/BMP의 6행 비드로드를 읽습니다. 결과가 7개 이상인 빨강 B·파랑 P·초록 T의 채워진 원만 지원하며, 빅로드는 지원하지 않습니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
+          <div className="image-fields"><label>방 이름<input aria-label="이미지 방 이름" value={imageRoom} maxLength={120} onChange={e => setImageRoom(e.target.value)}/></label><label>기록 그룹 / 슈<input aria-label="이미지 슈" value={imageShoe} maxLength={120} onChange={e => setImageShoe(e.target.value)}/></label><label>이미지 첫 결과의 기록 번호<input aria-label="이미지 시작 번호" type="number" min={1} max={999500} value={imageStart} onChange={e => setImageStart(Number(e.target.value))}/></label></div>
+          <p className="note">같은 방·슈·시작 번호로 다시 넣으면 중복을 막습니다. 새 슈는 그룹 이름을 바꾸세요. 실제 회차를 모르면 별도 그룹에서 1부터 번호를 부여하세요. 이미지는 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.</p>
+          {imageSaved && <p role="status" data-testid="image-save-status">{imageSaved}</p>}
+          {imageReview && <div className="image-review">
+            <img src={imageReview.preview} alt="자동으로 찾은 비드로드 원본 영역"/>
+            <p><b data-testid="image-detected-count">{imageOutcomes.length}개 결과 인식 추정</b> · 원본과 각 결과의 순서를 확인하세요.</p>
+            <div className="image-outcomes">{imageOutcomes.map((outcome, index) => <label key={index}>{imageStart + index}<select aria-label={`이미지 결과 ${index + 1}`} className={outcome} value={outcome} onChange={e => { setImageOutcomes(previous => previous.map((value, i) => i === index ? e.target.value as Outcome : value)); setImageConfirmed(false); }}><option value="B">B</option><option value="P">P</option><option value="T">T</option></select></label>)}</div>
+            {imageReview.warnings.map(warning => <p className="note" key={warning}>{warning}</p>)}
+            <label className="image-confirm"><input type="checkbox" checked={imageConfirmed} onChange={e => setImageConfirmed(e.target.checked)}/>원본의 B/P/T 순서와 방·슈·시작 번호를 확인했습니다.</label>
+            <button disabled={busy || !imageConfirmed || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
+          </div>}
+        </section>}
         <section className="browser-panel"><div className="panel-title"><h2>{browserOpen ? '테스트 게임 화면' : 'Chrome 연결'}</h2><span>사이트는 Chrome에서 직접 이용</span></div>
           <div className="browser-slot" ref={slot}>{!browserOpen && <div className="chrome-panel"><div className="empty-symbol">◉</div>
-            <h3>{chrome?.state === 'connected' ? 'Chrome에 연결되었습니다' : 'Chrome 확장에서 프로그램 실행을 누르세요'}</h3>
+            <h3>{chrome?.state === 'connected' ? 'Chrome 연결됨 · 게임 결과 인식 상태를 확인하세요' : 'Chrome 확장에서 프로그램 실행을 누르세요'}</h3>
             <p data-testid="chrome-status">{chrome?.message ?? '연결 상태 확인 중'}</p>
+            {chrome?.state === 'connected' && <>
+              {!chrome.profileConfigured && <p className="recognition-warning" data-testid="recognition-warning">실제 결과 인식 프로필 미설정 · 현재 게임 결과를 자동 수집하지 않습니다.</p>}
+              <p>에볼루션이 새 창으로 열렸다면 위의 <b>게임 창 확인</b> → 열린 Chrome 연결 화면의 <b>열린 게임 창 확인</b>을 누르고, 표시되는 게임 도메인 읽기를 허용하세요.</p>
+              <div className="game-targets">{chrome.targets.map(target => <div key={`${target.kind}:${target.host}`}>
+                <strong>{target.kind === 'window' ? '게임 창' : '게임 프레임'} · {target.host}</strong>
+                <span>{!target.permission ? '읽기 권한 필요 · 게임 창 확인에서 허용' : target.recognition === 'unconfigured' ? '읽기 허용됨 · 해당 화면의 결과 인식 프로필 없음' : target.recognition === 'observed' ? '게임 결과 인식됨' : target.recognition === 'unmatched' ? '이 화면의 방·슈·회차·결과를 찾지 못함' : '게임 정보 확인 대기'}</span>
+              </div>)}</div>
+            </>}
             {chrome?.pairingCode && <div className="pairing"><span>처음 한 번 확장에 입력할 연결 코드</span><strong data-testid="pairing-code">{chrome.pairingCode}</strong></div>}
             <ol><li>위의 확장 설치 폴더를 엽니다.</li><li>Chrome의 <b>chrome://extensions</b>에서 개발자 모드를 켜고 <b>압축해제된 확장 프로그램 로드</b>로 해당 폴더를 선택합니다.</li><li>바카라 탭에서 확장 아이콘을 눌러 연결 코드와 <b>현재 바카라 탭 읽기 허용</b>을 처음 한 번 설정합니다.</li></ol>
             {extensionFolder && <p className="folder-path">확장 폴더: {extensionFolder}</p>}
@@ -62,6 +107,7 @@ function App() {
           </div>}</div>
         </section>
         <section className="forecast-panel"><div className="panel-title"><h2>다음 회차 추정</h2><span>{latest ? `${latest + 1}회차 · 기록 범위 ${latest}회차까지` : '결과 기록 대기'}</span></div>
+          {snapshot?.results.length && snapshot.results.every(result => result.source === 'demo') ? <p className="recognition-warning" data-testid="demo-data-warning">테스트 기록 분석 · 실제 Chrome 게임의 결과와 연결된 추정값이 아닙니다.</p> : null}
           <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>
           <div className="models">{methods.map(method => {
             const f = next.find(f => f.method === method), probabilities = f?.probabilities ?? (method === 'A' ? BASE : null);

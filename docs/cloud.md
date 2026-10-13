@@ -18,3 +18,6 @@ bash scripts/test-cloud.sh
 Windows 앱 파일 교차 패키징은 성공했으나 NSIS 설치 EXE 생성은 이 Linux 환경에서 완료되지 않았습니다. 시스템 Wine이 없어 electron-builder의 공식 `toolsets.wine=1.0.1`(Wine 11)을 체크섬 검증 후 시도했지만 DLL 로딩이 실패했습니다. 이 단계는 Windows GitHub Actions 또는 Windows PC의 `npm run dist:win`에서 검증해야 합니다. 완성되지 않은 설치 EXE는 배포하지 않습니다.
 
 필수 네트워크는 npm registry, GitHub 및 공식 릴리스 자산, Debian 패키지 저장소입니다. 실제 사이트 검증에는 `box-1515.com`의 접근 허용과 이후 확인된 제공자 출처가 필요합니다. PR 생성에는 `api.github.com` 접근과 저장소 PR 쓰기 권한이 필요합니다. 현재 권한을 우회하거나 GitHub 토큰을 소스/로그에 저장하지 않습니다.
+# 0.3.0 이미지 테스트
+
+`bash scripts/test-cloud.sh`는 52개 단위 테스트, 빌드, Electron 테스트 2개(`app.spec.ts`, `image-import.spec.ts`)를 실행합니다. 이미지 테스트에는 사이트 로그인이나 Chrome 연결이 필요 없습니다. Chrome 팝업·iframe 통합 테스트는 Windows CI에서 실행합니다. Windows CI는 설치 EXE에서도 이미지 테스트와 패키지 안의 Chrome 확장을 검사합니다.

@@ -26,6 +26,23 @@ async function pair(peer: WebSocket) {
 }
 const observation: Observation = { roomId: 'r', roomName: 'Room', shoeId: 's', round: 1, outcome: 'B', confidence: 1, source: 'dom', historical: false };
 describe('authenticated Chrome loopback bridge', () => {
+  it('opens its own extension panel only through an authenticated connection', async () => {
+    expect(bridge.openPanel()).toBe(false);
+    const peer = await connect(), received: Array<{ type: string }> = [];
+    peer.on('message', data => received.push(JSON.parse(String(data))));
+    await pair(peer); expect(bridge.openPanel()).toBe(true);
+    await expect.poll(() => received.some(message => message.type === 'open-panel')).toBe(true);
+  });
+  it('reports game domains and missing permission without treating presence as collected results', async () => {
+    const peer = await connect(); await pair(peer);
+    const targets = [{ host: 'provider.example', kind: 'window', permission: false, recognition: 'waiting' }];
+    peer.send(JSON.stringify({ type: 'presence', tabs: 1, targets }));
+    await expect.poll(() => bridge.info().targets.length).toBe(1);
+    expect(bridge.info().targets).toEqual(targets); expect(bridge.info().profileConfigured).toBe(true); expect(rows).toHaveLength(0);
+    const error = once(peer, 'message');
+    peer.send(JSON.stringify({ type: 'presence', tabs: 1, targets: [{ ...targets[0], host: 'https://provider.example/?session=secret' }] }));
+    expect(JSON.parse(String((await error)[0])).type).toBe('error'); expect(bridge.info().targets).toEqual(targets);
+  });
   it('pairs once and classifies first snapshot as history, then new results as live', async () => {
     const peer = await connect(); await pair(peer);
     peer.send(JSON.stringify({ type: 'snapshot', host: 'provider.example', observations: [observation] }));

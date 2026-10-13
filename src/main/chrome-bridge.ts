@@ -15,7 +15,10 @@ const messageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pair'), code: z.string().regex(/^\d{6}$/) }).strict(),
   z.object({ type: z.literal('auth'), token: z.string().max(64) }).strict(),
   z.object({ type: z.literal('snapshot'), host: z.string().max(253), observations: observationsSchema }).strict(),
-  z.object({ type: z.literal('presence'), tabs: z.number().int().min(0).max(1000) }).strict(),
+  z.object({ type: z.literal('presence'), tabs: z.number().int().min(0).max(1000), targets: z.array(z.object({
+    host: z.string().min(1).max(253).regex(/^[a-z0-9.-]+$/), kind: z.enum(['window', 'frame']), permission: z.boolean(),
+    recognition: z.enum(['unconfigured', 'waiting', 'unmatched', 'observed']),
+  }).strict()).max(50).optional() }).strict(),
   z.object({ type: z.literal('ping') }).strict(),
 ]);
 function secretEquals(a: string, b: string) {
@@ -31,7 +34,7 @@ export class ChromeBridge {
   private attempts = 0;
   private attemptWindow = Date.now();
   private codeAt = Date.now();
-  private state: ChromeConnection = { state: 'waiting', paired: false, pairingCode: null, tabs: 0, message: 'Chrome 확장 연결 대기' };
+  private state: ChromeConnection = { state: 'waiting', paired: false, pairingCode: null, tabs: 0, targets: [], profileConfigured: false, message: 'Chrome 확장 연결 대기' };
   constructor(private file: string, private profile: () => AdapterProfile | null,
     private ingest: (observations: Observation[]) => void, private onChange: () => void,
     private onCollection: (message: string, collecting: boolean) => void = () => {}) {
@@ -41,7 +44,7 @@ export class ChromeBridge {
   }
   info(): ChromeConnection {
     if (Date.now() - this.codeAt > 600_000) { this.code = String(randomInt(0, 1_000_000)).padStart(6, '0'); this.codeAt = Date.now(); }
-    return { ...this.state, paired: Boolean(this.credentials), pairingCode: this.credentials ? null : this.code };
+    return { ...this.state, targets: this.state.targets.map(target => ({ ...target })), profileConfigured: Boolean(this.profile()), paired: Boolean(this.credentials), pairingCode: this.credentials ? null : this.code };
   }
   async listen(port = BRIDGE_PORT) {
     this.server = createServer((_request, response) => { response.writeHead(404); response.end(); });
@@ -89,13 +92,14 @@ export class ChromeBridge {
           authorized = true; clearTimeout(deadline);
           for (const previous of this.peers) previous.close(1000, 'reconnected');
           this.peers.clear(); this.peers.add(peer);
-          this.state = { state: 'connected', paired: true, pairingCode: null, tabs: 0, message: 'Chrome 연결됨 · 열린 바카라 탭 확인 중' };
+          this.state = { state: 'connected', paired: true, pairingCode: null, tabs: 0, targets: [], profileConfigured: Boolean(this.profile()), message: 'Chrome 연결됨 · 열린 바카라 탭 확인 중' };
           send({ type: 'ready', profile: this.profile() }); this.onChange(); return;
         }
         if (!authorized) { peer.close(1008, 'authentication required'); return; }
         if (message.type === 'ping') { send({ type: 'pong' }); return; }
         if (message.type === 'presence') {
           this.state.tabs = message.tabs;
+          this.state.targets = message.targets ?? [];
           this.state.message = message.tabs ? `Chrome 연결됨 · 허용된 탭 ${message.tabs}개${this.profile() ? '' : ' · 결과 인식 프로필 미설정'}` : 'Chrome 연결됨 · 허용된 바카라 탭을 열어주세요';
           this.onChange(); return;
         }
@@ -116,8 +120,12 @@ export class ChromeBridge {
     peer.on('close', () => {
       clearTimeout(deadline);
       if (!this.peers.delete(peer)) return;
-      if (!this.peers.size) { this.state = { ...this.state, state: 'waiting', tabs: 0, message: 'Chrome 재연결 대기 · 확장은 자동으로 다시 연결합니다.' }; this.onChange(); }
+      if (!this.peers.size) { this.state = { ...this.state, state: 'waiting', tabs: 0, targets: [], message: 'Chrome 재연결 대기 · 확장은 자동으로 다시 연결합니다.' }; this.onChange(); }
     });
+  }
+  openPanel(): boolean {
+    for (const peer of this.peers) if (peer.readyState === WebSocket.OPEN) { peer.send(JSON.stringify({ type: 'open-panel' })); return true; }
+    return false;
   }
   refreshProfile() {
     for (const peer of this.peers) if (peer.readyState === WebSocket.OPEN) peer.send(JSON.stringify({ type: 'ready', profile: this.profile() }));
@@ -126,7 +134,7 @@ export class ChromeBridge {
     this.credentials = null; this.code = String(randomInt(0, 1_000_000)).padStart(6, '0'); this.codeAt = Date.now(); this.attempts = 0;
     mkdirSync(dirname(this.file), { recursive: true }); writeFileSync(this.file, '{}', { mode: 0o600 });
     for (const peer of this.peers) peer.close(1000, 'pair again');
-    this.state = { state: 'waiting', paired: false, pairingCode: this.code, tabs: 0, message: '확장에서 새 연결 코드를 입력하세요.' }; this.onChange();
+    this.state = { state: 'waiting', paired: false, pairingCode: this.code, tabs: 0, targets: [], profileConfigured: Boolean(this.profile()), message: '확장에서 새 연결 코드를 입력하세요.' }; this.onChange();
   }
   async close() {
     for (const peer of this.sockets.clients) peer.terminate();

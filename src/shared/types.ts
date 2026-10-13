@@ -44,9 +44,12 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
+  analyzeImage(): Promise<ImageReview | null>;
+  saveImage(request: ImageSaveRequest): Promise<ImageSaveResult>;
   chromeInfo(): Promise<ChromeConnection>;
   chromeReset(): Promise<void>;
   chromeExtensionFolder(): Promise<string>;
+  chromeOpenPanel(): Promise<boolean>;
   onChrome(callback: (status: ChromeConnection) => void): () => void;
   snapshot(roomId?: string, shoeId?: string): Promise<Snapshot>;
   open(mode: 'site' | 'demo'): Promise<void>;
@@ -58,7 +61,16 @@ export interface AnalyzerAPI {
   onChange(callback: () => void): () => void;
   onStatus(callback: (status: CollectorStatus) => void): () => void;
 }
+export interface ImageReview {
+  id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];
+}
+export interface ImageSaveRequest { reviewId: string; roomName: string; shoeId: string; startRound: number; outcomes: Outcome[] }
+export interface ImageSaveResult { roomId: string; shoeId: string; added: number; pending: number }
 export interface ChromeConnection {
   state: 'waiting' | 'connected' | 'error'; paired: boolean; pairingCode: string | null;
-  tabs: number; message: string;
+  tabs: number; message: string; profileConfigured: boolean; targets: ChromeGameTarget[];
+}
+export interface ChromeGameTarget {
+  host: string; kind: 'window' | 'frame'; permission: boolean;
+  recognition: 'unconfigured' | 'waiting' | 'unmatched' | 'observed';
 }

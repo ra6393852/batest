@@ -161,7 +161,7 @@ export function findRoadGrids(width: number, height: number, bitmap: Uint8Array,
   return grids;
 }
 
-export function readBeadGrid(grid: RoadGrid): Outcome[] | null {
+export function readBeadGrid(grid: RoadGrid, minimum = 7): Outcome[] | null {
   const columns = grid.cells.map(column => column.map(cell => cell.filled ? cell.outcome : null));
   const first = columns.findIndex(column => column.some(Boolean)); if (first < 0) return null;
   const result: Outcome[] = []; let ended = false;
@@ -172,7 +172,7 @@ export function readBeadGrid(grid: RoadGrid): Outcome[] | null {
       else result.push(cell);
     }
   }
-  return result.length >= 7 && result.length <= 500 ? result : null;
+  return result.length >= minimum && result.length <= 500 ? result : null;
 }
 
 export function readBigRoadGrid(grid: RoadGrid): { outcomes: Outcome[]; tieAfter: number[] } | null {

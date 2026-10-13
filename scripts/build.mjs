@@ -16,6 +16,8 @@ await build({
 });
 await viteBuild();
 await mkdir('dist/fixtures', { recursive: true });
+await mkdir('dist/ocr-langs', { recursive: true });
+for (const lang of ['eng','kor']) await copyFile(`node_modules/@tesseract.js-data/${lang}/4.0.0/${lang}.traineddata.gz`, `dist/ocr-langs/${lang}.traineddata.gz`);
 await copyFile('tests/fixtures/table.html', 'dist/fixtures/table.html');
 await cp('extension', 'dist/extension', { recursive: true });
 await build({

@@ -15,7 +15,7 @@ afterEach(() => { store.close(); rmSync(folder, { recursive: true, force: true }
 describe('SQLite results and immutable forecasts', () => {
   it('persists results and forecasts across a restart', async () => {
     store.ingest([sample(1)]); store.close(); store = await AnalyzerStore.open(file, () => new Date(time));
-    expect(store.snapshot().results).toHaveLength(1); expect(store.snapshot().forecasts).toHaveLength(8);
+    expect(store.snapshot().results).toHaveLength(1); expect(store.snapshot().forecasts).toHaveLength(16);
     expect(readFileSync(file).subarray(0, 15).toString()).toBe('SQLite format 3');
   });
   it('deduplicates a round and stages conflicting observations without overwriting', () => {
@@ -99,7 +99,7 @@ describe('SQLite results and immutable forecasts', () => {
   it('exports all results and predictions with formula injection protection', () => {
     store.ingest([sample(1, { roomName: '=HYPERLINK("bad")' })]);
     const csv = store.csv('room-a', 'shoe-1'); expect(csv).toContain("'=HYPERLINK"); expect(csv).toContain('"horizon"');
-    expect(csv.split('\r\n')).toHaveLength(10);
+    expect(csv.split('\r\n')).toHaveLength(18);
     expect(() => store.csv('missing', 'shoe-1')).toThrow();
   });
 });

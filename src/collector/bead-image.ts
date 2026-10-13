@@ -9,10 +9,12 @@ export interface BeadImageResult {
   bounds: { x: number; y: number; width: number; height: number };
   warnings: string[];
   format: 'bead' | 'big-road'; tieAfter: number[]; diagnostics?: RecognitionDiagnostics;
+  beadCells?: Array<{ x: number; y: number; width: number; height: number }>;
+  completeGrid?: boolean;
 }
 type Dot = { x: number; y: number; width: number; height: number; outcome: Outcome; fill: number };
 // Electron's nativeImage.toBitmap() is BGRA. No files, network, or page interaction here.
-export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Array): BeadImageResult {
+export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Array, capture = false): BeadImageResult {
   const pixels = width * height;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || pixels > 12_000_000 || bitmap.length !== pixels * 4)
     throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
@@ -29,22 +31,30 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   }
   const grids = findRoadGrids(width, height, bitmap, colors);
   diagnostics.gridCandidates = grids.length;
-  const readings: Array<{ bounds: BeadImageResult['bounds']; outcomes: Outcome[]; tieAfter: number[]; format: 'bead' | 'big-road' }> = [];
+  let readings: Array<{ bounds: BeadImageResult['bounds']; outcomes: Outcome[]; tieAfter: number[]; format: 'bead' | 'big-road'; beadCells?: BeadImageResult['beadCells']; completeGrid?: boolean }> = [];
   for (const grid of grids) {
-    const bead = readBeadGrid(grid);
-    if (bead) { readings.push({ ...grid, outcomes: bead, tieAfter: [], format: 'bead' }); continue; }
+    const bead = readBeadGrid(grid, capture ? 1 : 7);
+    if (bead) {
+      const first = grid.cells.findIndex(column => column.some(cell => cell.filled && cell.outcome));
+      const dx = grid.bounds.width / grid.cells.length, dy = grid.bounds.height / 6;
+      const beadCells = bead.map((_, i) => ({ x: grid.bounds.x + (first + Math.floor(i / 6)) * dx, y: grid.bounds.y + (i % 6) * dy, width: dx, height: dy }));
+      readings.push({ ...grid, outcomes: bead, tieAfter: [], format: 'bead', beadCells,
+        completeGrid: first === 0 && grid.cells.length > Math.ceil(bead.length / 6) }); continue;
+    }
     const road = readBigRoadGrid(grid);
     if (road) readings.push({ ...grid, ...road, format: 'big-road' });
   }
+  if (capture) readings = readings.filter(reading => reading.format === 'bead');
   readings.sort((a, b) => b.outcomes.length - a.outcomes.length);
   if (readings.length) {
     const reading = readings[0];
     if (readings.some(other => other !== reading && other.outcomes.length >= reading.outcomes.length * 0.8 && (other.bounds.x >= reading.bounds.x + reading.bounds.width || reading.bounds.x >= other.bounds.x + other.bounds.width || other.bounds.y >= reading.bounds.y + reading.bounds.height || reading.bounds.y >= other.bounds.y + other.bounds.height)))
       fail('여러 그림판이 비슷하게 보여 하나를 정할 수 없습니다. 분석할 그림판만 포함한 이미지를 넣어주세요.', 'ambiguous');
-    return { outcomes: reading.outcomes, format: reading.format, tieAfter: reading.tieAfter, bounds: reading.bounds, confidence: 0.8, diagnostics: { ...diagnostics, stage: 'complete', detail: '격자선으로 결과를 읽었습니다.' },
-      warnings: reading.format === 'bead' ? ['비드로드 격자를 위→아래 6행, 왼쪽 열부터 읽었습니다. 빨강 B·파랑 P·초록 T의 순서를 원본과 확인하세요.', '방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다. 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.']
-        : ['빅로드의 B/P 연속과 꺾임을 따라 읽었습니다. 아래 파생 로드는 결과 기록에 포함하지 않습니다.', '초록 타이 표시의 횟수는 자동 확정하지 않습니다. 원본의 숫자/표시를 확인해 각 타이 횟수를 입력하세요.', '방·슈·실제 회차 번호를 확인하세요. 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.'] };
+    return { outcomes: reading.outcomes, format: reading.format, tieAfter: reading.tieAfter, bounds: reading.bounds, beadCells: reading.beadCells, completeGrid: reading.completeGrid, confidence: 0.8, diagnostics: { ...diagnostics, stage: 'complete', detail: '격자선으로 결과를 읽었습니다.' },
+      warnings: reading.format === 'bead' ? ['비드로드 격자를 위→아래 6행, 왼쪽 열부터 읽었습니다. 빨강 B·파랑 P·초록 T의 순서를 원본과 확인하세요.', '방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다. 첫 사진은 기준 기록이며 이후 새 결과는 사전 예측과 비교합니다.']
+        : ['빅로드의 B/P 연속과 꺾임을 따라 읽었습니다. 아래 파생 로드는 결과 기록에 포함하지 않습니다.', '초록 타이 표시의 횟수는 자동 확정하지 않습니다. 원본의 숫자/표시를 확인해 각 타이 횟수를 입력하세요.', '방·슈·실제 회차 번호를 확인하세요. 첫 사진은 기준 기록이며 이후 새 결과는 사전 예측과 비교합니다.'] };
   }
+  if (capture) fail('자동 수집용 6행 비드로드를 확인하지 못했습니다. 숫자·색 원이 채워진 비드로드가 보이도록 게임 창을 열어 두세요.', 'grid');
   const circleDetection = findCircleRoads(width, height, bitmap, colors);
   diagnostics.circleCandidates = circleDetection.circles; diagnostics.circleGrids = circleDetection.grids.length;
   const circleReadings = circleDetection.grids.flatMap(grid => { const road = readBigRoadGrid(grid); return road ? [{ ...road, bounds: grid.bounds }] : []; }).sort((a, b) => b.outcomes.length - a.outcomes.length);
@@ -53,7 +63,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
     if (circleReadings.length > 1 && circleReadings[1].outcomes.length >= reading.outcomes.length * 0.8)
       fail('여러 빅로드가 비슷하게 보여 하나를 정할 수 없습니다. 분석할 그림판 하나만 넣어주세요.', 'ambiguous');
     return { ...reading, format: 'big-road', confidence: 0.8, diagnostics: { ...diagnostics, stage: 'complete', detail: '격자선 대신 원의 중심·둘레로 빅로드를 읽었습니다.' },
-      warnings: ['빨강·파랑 원의 중심과 둘레로 6행을 구성하고 연속·꺾임 순서로 읽었습니다. 원본과 순서를 확인하세요.', '초록 타이 표시는 횟수를 자동 확정하지 않습니다. 각 타이 횟수를 확인해 입력하세요.', '이미지는 과거 기록으로 저장하며 사후 O/X 채점하지 않습니다.'] };
+      warnings: ['빨강·파랑 원의 중심과 둘레로 6행을 구성하고 연속·꺾임 순서로 읽었습니다. 원본과 순서를 확인하세요.', '초록 타이 표시는 횟수를 자동 확정하지 않습니다. 각 타이 횟수를 확인해 입력하세요.', '이미지는 첫 사진은 기준 기록이며 이후 새 결과는 사전 예측과 비교합니다.'] };
   }
   if (grids.some(grid => grid.cells.flat().filter(cell => cell.outcome !== null).length >= 7))
     fail('격자는 찾았지만 일부 결과 또는 순서가 불확실합니다. 누락 방지를 위해 저장하지 않았습니다.', 'order');
@@ -125,6 +135,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   return {
     outcomes: chosen.cells.map(d => d.outcome), confidence: 0.8, format: 'bead', tieAfter: [], diagnostics: { ...diagnostics, stage: 'complete', detail: '채워진 원으로 비드로드를 읽었습니다.' },
     bounds: { x: left, y: top, width: right - left, height: bottom - top },
-    warnings: ['색상 기반 인식 추정입니다. 빨강=B, 파랑=P, 초록=T인지 원본과 순서를 확인하세요.', '위에서 아래로 6개씩, 왼쪽 열부터 읽습니다. 방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다.', '이 이미지는 과거 기록으로 저장합니다. 실제 결과 발생 전 예측으로 소급 채점하지 않습니다.'],
+    beadCells: chosen.cells.map(d => ({ x: d.x - d.width / 2, y: d.y - d.height / 2, width: d.width, height: d.height })),
+    warnings: ['색상 기반 인식 추정입니다. 빨강=B, 파랑=P, 초록=T인지 원본과 순서를 확인하세요.', '위에서 아래로 6개씩, 왼쪽 열부터 읽습니다. 방·슈·실제 회차 번호는 이미지에서 자동 확인하지 않습니다.', '처음 사진은 기준 기록입니다. 이후 추가 결과는 붙여넣기 전에 저장된 예측에만 채점합니다.'],
   };
 }

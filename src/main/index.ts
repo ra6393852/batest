@@ -10,6 +10,9 @@ import { parseOCR } from '../collector/ocr';
 import { ObservationTracker } from '../collector/dom';
 import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
+import { ScoreReader } from './score-reader';
+import { WindowReader } from './window-reader';
+import { WindowCapture } from './window-capture';
 import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
@@ -21,7 +24,9 @@ let ocrBusy = false, ocrTracker = new ObservationTracker();
 let lastOCR = '';
 let chromeBridge: ChromeBridge | undefined;
 const imageImport = new ImageImport();
-function inspectImage(image: NativeImage): ImageReview | ImagePreview {
+let scoreReader: ScoreReader | undefined;
+let windowCapture: WindowCapture | undefined;
+async function inspectImage(image: NativeImage): Promise<ImageReview | ImagePreview> {
   imageImport.invalidate();
   if (image.isEmpty()) throw new Error('이미지가 없습니다. 그림판을 캡처해 복사한 뒤 이미지 붙여넣기를 누르세요.');
   const { width, height } = image.getSize();
@@ -35,7 +40,17 @@ function inspectImage(image: NativeImage): ImageReview | ImagePreview {
   }
   // Retain the original clipboard pixels for 100%/150% review. Display zoom
   // never resamples the bitmap used by recognition.
-  return imageImport.create(analysis, image.toDataURL());
+  const review = imageImport.create(analysis, image.toDataURL());
+  if (analysis.beadCells?.length) {
+    try {
+      const resources = app.isPackaged ? join(process.resourcesPath, 'ocr') : null;
+      scoreReader ??= new ScoreReader(resources, resources ? join(resources, 'worker.cjs') : join(__dirname, 'ocr-worker.cjs'));
+      const read = await scoreReader.read(width, height, image.toBitmap(), analysis.beadCells);
+      review.scores = read.scores; review.scoreConfidences = read.confidences;
+      review.warnings.push('숫자는 그림판에 표시된 점수로 기록합니다. 0~9 점수와 승패를 원본과 확인하세요. 읽지 못한 숫자는 비워 두며 점수 없이 저장할 수 있습니다.');
+    } catch { review.scores = analysis.outcomes.map(() => null); review.warnings.push('점수 자동 읽기를 완료하지 못했습니다. 숫자는 원본을 보고 입력하거나 비워 두세요.'); }
+  }
+  return review;
 }
 const rendererPath = join(__dirname, '../renderer/index.html');
 const demoPath = join(__dirname, '../fixtures/table.html');
@@ -101,6 +116,15 @@ void app.whenReady().then(async () => {
     webPreferences: { preload: join(__dirname, '../preload/dashboard.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true } });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
+  const ocrResources=app.isPackaged?join(process.resourcesPath,'ocr'):null;
+  const workerFile=ocrResources?join(ocrResources,'worker.cjs'):join(__dirname,'ocr-worker.cjs');
+  windowCapture=new WindowCapture(store,new WindowReader(ocrResources,workerFile),new ScoreReader(ocrResources,workerFile),
+    info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',info);},changed);
+  ipcMain.handle('capture:windows',async event=>{local(event);return windowCapture!.windows();});
+  ipcMain.handle('capture:start',async(event,id)=>{local(event);await windowCapture!.start(z.string().regex(/^window:\d+:\d+$/).parse(id));});
+  ipcMain.handle('capture:stop',event=>{local(event);windowCapture!.stop();});
+  ipcMain.handle('capture:info',event=>{local(event);return windowCapture!.current();});
+  ipcMain.handle('capture:new-shoe',event=>{local(event);windowCapture!.newShoe();});
   const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
   if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
     chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,
@@ -218,4 +242,4 @@ void app.whenReady().then(async () => {
 }).catch(() => { dialog.showErrorBox('실행 실패', '데이터베이스 또는 앱 초기화 실패. 기존 데이터 파일은 삭제하지 마세요.'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('will-quit', () => { if (chromeBridge) void chromeBridge.close(); store?.close(); if (ocrWorker) void ocrWorker.terminate(); });
+app.on('will-quit', () => { if (windowCapture) void windowCapture.close(); if (chromeBridge) void chromeBridge.close(); store?.close(); if (ocrWorker) void ocrWorker.terminate(); if (scoreReader) void scoreReader.close(); });

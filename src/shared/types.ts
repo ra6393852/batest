@@ -6,12 +6,12 @@ export type Probabilities = Record<Outcome, number>;
 export interface Observation {
   roomId: string; roomName: string; shoeId: string; round: number; outcome: Outcome;
   confidence: number; source: 'dom' | 'ocr' | 'demo' | 'manual' | 'chrome'; historical: boolean;
-  occurredAt?: string;
+  occurredAt?: string; score?: number;
 }
 export interface GameResult extends Observation { id: string; recordedAt: string }
 export interface Forecast {
   id: string; roomId: string; shoeId: string; targetRound: number; cutoffRound: number;
-  horizon: 1 | 2; method: Method; probabilities: Probabilities; pick: Outcome;
+  horizon: 1 | 2 | 3 | 4; method: Method; probabilities: Probabilities; pick: Outcome;
   sampleSize: number; basis: string; createdAt: string;
   actual?: Outcome; mark?: 'O' | 'X';
 }
@@ -26,6 +26,7 @@ export interface RoomStats {
   current: { outcome: 'B' | 'P' | null; length: number }; longest: { B: number; P: number };
   transitions: number; comparisons: number;
   accuracy: Record<Method, { all: Accuracy; last10: Accuracy; last30: Accuracy; last100: Accuracy }>;
+  advanceComparisons: number; advanceAccuracy: Record<Method, Accuracy>;
 }
 export interface Room { id: string; name: string; shoes: string[]; updatedAt: string }
 export interface Snapshot {
@@ -44,6 +45,12 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
+  captureWindows(): Promise<CaptureWindow[]>;
+  captureStart(id: string): Promise<void>;
+  captureStop(): Promise<void>;
+  captureInfo(): Promise<CaptureInfo>;
+  captureNewShoe(): Promise<void>;
+  onCapture(callback: (info: CaptureInfo) => void): () => void;
   analyzeImage(): Promise<ImageReview | ImagePreview | null>;
   pasteImage(): Promise<ImageReview | ImagePreview>;
   reviewSequence(sequence: string): Promise<ImageReview>;
@@ -64,9 +71,16 @@ export interface AnalyzerAPI {
   onChange(callback: () => void): () => void;
   onStatus(callback: (status: CollectorStatus) => void): () => void;
 }
+export interface CaptureWindow { id: string; name: string }
+export interface CaptureInfo {
+  enabled: boolean; state: 'idle'|'waiting'|'collecting'|'blocked'; message: string;
+  windowName?: string; preview?: string; capturedAt?: string; processedAt?: string;
+  roomId?: string; roomName?: string; shoeId?: string; rounds?: number;
+}
 export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];
   format: 'bead' | 'big-road'; tieAfter: number[]; diagnostics?: RecognitionDiagnostics;
+  scores?: Array<number | null>; scoreConfidences?: number[];
 }
 export interface RecognitionDiagnostics {
   width: number; height: number; coloredPixels: number; gridCandidates: number;
@@ -74,7 +88,7 @@ export interface RecognitionDiagnostics {
   stage: 'color' | 'grid' | 'circles' | 'order' | 'ambiguous' | 'complete'; detail: string;
 }
 export interface ImagePreview { preview: string; recognitionError: string; diagnostics?: RecognitionDiagnostics }
-export interface ImageSaveRequest { reviewId: string; roomName: string; shoeId: string; startRound: number; outcomes: Outcome[]; tiesAfter?: Array<{ index: number; count: number }> }
+export interface ImageSaveRequest { reviewId: string; roomName: string; shoeId: string; startRound: number; outcomes: Outcome[]; scores?: Array<number | null>; tiesAfter?: Array<{ index: number; count: number }> }
 export interface ImageSaveResult { roomId: string; shoeId: string; added: number; pending: number }
 export interface ChromeConnection {
   state: 'waiting' | 'connected' | 'error'; paired: boolean; pairingCode: string | null;

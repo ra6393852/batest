@@ -12,7 +12,7 @@ test('image Ctrl+V works on dashboard and focused inputs while text paste stays 
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
     const page = await app.firstWindow();
     await expect(page.getByRole('group', { name: '그림판 캡처 붙여넣기 안내' })).toContainText('Win');
-    await expect(page.getByRole('button')).toHaveCount(1);
+    await expect(page.getByRole('button',{name:'게임 창 선택',exact:true})).toBeVisible();
     await expect(page.getByRole('button', { name: 'Chrome 확장 설치 폴더', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '시뮬레이션 실행', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '허용된 프로필 가져오기', exact: true })).toHaveCount(0);
@@ -71,6 +71,58 @@ test('image Ctrl+V works on dashboard and focused inputs while text paste stays 
     await expect(page.getByRole('button', { name: '확인한 그림판 기록 저장' })).toBeDisabled();
     await page.screenshot({ path: 'test-results/clipboard-dashboard.png' });
   } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
+});
+
+test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling predictions', async () => {
+  test.setTimeout(90000);
+  const folder=mkdtempSync(join(tmpdir(),'baccarat-numeric-')); let app:ElectronApplication|undefined;
+  const outcomes=('PBPBTTBPPP BPPBPTPPBTBB'.replaceAll(' ','')).split('') as Array<'B'|'P'|'T'>;
+  const points=[5,7,9,2,5,9,6,5,7,7,4,8,8,4,7,6,9,8,2,3,7,6];
+  try {
+    app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
+    const page=await app.firstWindow();
+    await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer',exact:true})).toBeVisible();
+    const copy=async (values:typeof outcomes,scores:number[])=>{
+      const encoded=await page.evaluate(({values,scores})=>{
+        const canvas=document.createElement('canvas');canvas.width=360;canvas.height=146;
+        const context=canvas.getContext('2d')!;context.fillStyle='#fff';context.fillRect(0,0,360,146);
+        const pitch=20.5,left=10,top=10;context.strokeStyle='#ddd';context.lineWidth=1;
+        for(let row=0;row<=6;row++){context.beginPath();context.moveTo(left,Math.round(top+row*pitch));context.lineTo(Math.round(left+16*pitch),Math.round(top+row*pitch));context.stroke();}
+        for(let col=0;col<=16;col++){context.beginPath();context.moveTo(Math.round(left+col*pitch),top);context.lineTo(Math.round(left+col*pitch),Math.round(top+6*pitch));context.stroke();}
+        values.forEach((outcome,i)=>{const x=left+(Math.floor(i/6)+0.5)*pitch,y=top+(i%6+0.5)*pitch;context.fillStyle={B:'#fb213c',P:'#2388ff',T:'#04a76c'}[outcome];context.beginPath();context.arc(x,y,9,0,Math.PI*2);context.fill();context.fillStyle='#fff';context.font='bold 14px Arial';context.textAlign='center';context.textBaseline='middle';context.fillText(String(scores[i]),x,y);});
+        return canvas.toDataURL('image/png').split(',')[1];
+      },{values,scores});
+      await app!.evaluate(async({clipboard,ClipboardItem},value)=>{await clipboard.write([new ClipboardItem({'image/png':new Blob([new Uint8Array(Buffer.from(value,'base64'))],{type:'image/png'})})]);},encoded);
+      await page.getByRole('heading',{name:'Baccarat Live Analyzer',exact:true}).click();await page.keyboard.press('Control+v');
+      await expect(page.getByTestId('image-detected-count')).toHaveText(`${values.length}개 결과 인식 추정`,{timeout:20000});
+    };
+    expect(outcomes).toHaveLength(22);await copy(outcomes,points);
+    const readPoints=await page.locator('.score-field input').evaluateAll(inputs=>inputs.map(input=>(input as HTMLInputElement).value));
+    expect(readPoints.filter(Boolean).length).toBeGreaterThanOrEqual(20);
+    for(let i=0;i<22;i++){if(readPoints[i])expect(readPoints[i]).toBe(String(points[i]));else await page.getByLabel(`이미지 점수 ${i+1}`,{exact:true}).fill(String(points[i]));}
+    await page.getByLabel('이미지 슈').fill('numeric-shoe-1');await page.getByRole('checkbox').check();await page.getByRole('button',{name:'확인한 그림판 기록 저장'}).click();
+    await expect(page.getByTestId('total-results')).toHaveText('22');
+    const original=await page.evaluate(()=>window.analyzer.snapshot());const frozen=original.forecasts.filter(f=>f.cutoffRound===22);
+    expect(original.results.map(r=>r.score)).toEqual(points);expect(frozen).toHaveLength(16);
+    await expect(page.getByLabel('예측 기준 회차')).toHaveValue('latest');
+    for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(22+horizon));
+    for(const f of frozen)await expect(page.getByTestId(`forecast-${f.method}-${f.horizon}`)).toHaveText(f.pick);
+    const next=['B','P','T','B'] as const;await copy([...outcomes,...next],[...points,0,1,8,9]);
+    await page.getByRole('checkbox').check();await page.getByRole('button',{name:'확인한 그림판 기록 저장'}).click();
+    await expect(page.getByTestId('total-results')).toHaveText('26');
+    const updated=await page.evaluate(()=>window.analyzer.snapshot());const graded=updated.forecasts.filter(f=>f.cutoffRound===22);
+    expect(graded).toHaveLength(16);expect(graded.every(f=>f.actual&&f.mark===(f.pick===f.actual?'O':'X'))).toBe(true);
+    expect(graded.map(({actual,mark,...f})=>f).sort((a,b)=>a.id.localeCompare(b.id))).toEqual(frozen.map(({actual,mark,...f})=>f).sort((a,b)=>a.id.localeCompare(b.id)));
+    await expect(page.getByLabel('예측 기준 회차')).toHaveValue('latest');
+    await page.getByLabel('예측 기준 회차').selectOption('22');await expect(page.getByTestId('bundle-accuracy-A')).toContainText('50.00%');
+    expect(updated.stats.advanceComparisons).toBe(4);expect(updated.results.slice(22).every(r=>!r.historical)).toBe(true);
+    await page.getByTestId('forecast-method-A').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/four-round-graded.png'});
+    await page.getByLabel('예측 기준 회차').selectOption('latest');
+    for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(26+horizon));
+    await app.close();app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
+    const reopened=await app.firstWindow();await expect(reopened.getByTestId('total-results')).toHaveText('26');
+    expect((await reopened.evaluate(()=>window.analyzer.snapshot())).forecasts.filter(f=>f.cutoffRound===22).every(f=>f.actual)).toBe(true);
+  }finally{await app?.close().catch(()=>{});rmSync(folder,{recursive:true,force:true});}
 });
 
 test('clipboard preview, correction, confirmation, deduplication and restart persistence', async () => {

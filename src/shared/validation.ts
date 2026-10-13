@@ -4,7 +4,7 @@ export const observationSchema = z.object({
   roomId: id, roomName: z.string().trim().min(1).max(120), shoeId: id,
   round: z.number().int().min(1).max(1_000_000), outcome: z.enum(['B', 'P', 'T']),
   confidence: z.number().min(0).max(1), source: z.enum(['dom', 'ocr', 'demo', 'manual', 'chrome']),
-  historical: z.boolean(), occurredAt: z.iso.datetime().optional(),
+  historical: z.boolean(), occurredAt: z.iso.datetime().optional(), score: z.number().int().min(0).max(9).optional(),
 }).strict();
 const selector = z.string().min(1).max(200);
 const attribute = z.string().regex(/^data-[a-z0-9-]+$/);

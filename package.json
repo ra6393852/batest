@@ -1,6 +1,6 @@
 {
   "name": "baccarat-live-analyzer",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "private": true,
   "description": "Read-only baccarat result recording and statistical comparison",
   "author": "Baccarat Live Analyzer contributors",
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/kor": "1.0.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sql.js": "1.14.2",
@@ -91,6 +92,10 @@
       {
         "from": "dist/extension",
         "to": "chrome-extension"
+      },
+      {
+        "from": "dist/ocr-langs",
+        "to": "ocr/langs"
       }
     ]
   }

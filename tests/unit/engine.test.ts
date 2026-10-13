@@ -32,13 +32,29 @@ describe('causal probability models', () => {
     const a = accuracy(forecasts); expect(a.rate).toBe(0.5); expect(a.noTieRate).toBe(1);
     expect(a.brier).toBeGreaterThan(0); expect(a.logLoss).toBeGreaterThan(0);
   });
-  it('marginalizes horizon 2 without inserting hypothetical training outcomes', () => {
+  it('uses only observed two-ahead targets without inserting hypothetical training outcomes', () => {
     const history: Outcome[] = ['B', 'P', 'B', 'B', 'T'];
     const copy = [...history], next = analyzeTwoAhead(history);
     expect(history).toEqual(copy);
     expect(next[0].probabilities.B).toBeCloseTo(BASE.B);
-    expect(next[2].sampleSize).toBe(analyze(history)[2].sampleSize);
+    expect(next[2].sampleSize).toBe(0); expect(next[2].probabilities).toEqual(BASE);
     for (const m of next) expect(Object.values(m.probabilities).reduce((a, b) => a + b)).toBeCloseTo(1);
+  });
+  it('normalizes all four horizons and picks the highest probability without changing history', () => {
+    const history: Outcome[] = ['B','P','B','B','T','P','B','P','P','B'];
+    const original = [...history];
+    for (const horizon of [1,2,3,4] as const) for (const model of analyze(history, [history], horizon)) {
+      expect(Object.values(model.probabilities).reduce((a,b)=>a+b)).toBeCloseTo(1);
+      expect(model.probabilities[model.pick]).toBe(Math.max(...Object.values(model.probabilities)));
+    }
+    expect(history).toEqual(original);
+  });
+  it('uses confirmed score matches only when three observed targets exist and falls back otherwise', () => {
+    const history: Outcome[] = ['B','P','B','P','B','P','B'];
+    const scores = [9,4,9,4,9,4,9];
+    const model = analyze(history, [history], 1, scores, [scores])[3];
+    expect(model.sampleSize).toBe(3); expect(model.basis).toContain('점수 9'); expect(model.pick).toBe('P');
+    expect(analyze(history,[history],4,scores,[scores])[3].basis).toContain('3개 미만');
   });
   it('does not carry streaks across an unobserved round', () => {
     const s = statistics(['B', 'B', 'B', 'B'], [], [1, 2, 5, 6]);

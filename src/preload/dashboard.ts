@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
+  captureWindows: () => ipcRenderer.invoke('capture:windows'),
+  captureStart: id => ipcRenderer.invoke('capture:start', id),
+  captureStop: () => ipcRenderer.invoke('capture:stop'),
+  captureInfo: () => ipcRenderer.invoke('capture:info'),
+  captureNewShoe: () => ipcRenderer.invoke('capture:new-shoe'),
+  onCapture: callback => { const listener=(_event:unknown,info:Parameters<typeof callback>[0])=>callback(info);ipcRenderer.on('capture:changed',listener);return ()=>ipcRenderer.removeListener('capture:changed',listener); },
   analyzeImage: () => ipcRenderer.invoke('image:analyze'),
   pasteImage: () => ipcRenderer.invoke('image:paste'),
   reviewSequence: sequence => ipcRenderer.invoke('image:sequence', sequence),

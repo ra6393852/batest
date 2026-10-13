@@ -89,7 +89,9 @@ test('Chrome extension pairs, collects read-only results and reconnects without 
     await expect.poll(() => worker.evaluate(async () => (await chrome.tabs.query({})).length), { timeout: 10000 }).toBe(tabCount + 1);
     await popup.getByRole('button', { name: '열린 게임 창 확인', exact: true }).click();
     await expect.poll(() => bridge.info().targets.some(target => target.host === 'game.example' && target.kind === 'window'), { timeout: 10000 }).toBe(true);
-    expect(bridge.info().targets.find(target => target.host === 'unpermitted.example')?.permission).toBe(false);
+    // Each popup finishes navigation separately; the first discovered window
+    // does not guarantee that the unpermitted window's metadata has arrived.
+    await expect.poll(() => bridge.info().targets.find(target => target.host === 'unpermitted.example')?.permission, { timeout: 10000 }).toBe(false);
     expect(bridge.info().targets.filter(target => target.host === 'game.example').every(target => target.recognition === 'unconfigured')).toBe(true);
     expect(store.snapshot().rooms).toHaveLength(1);
     // Use a real loopback server for popup/frame DOM collection. Chrome-created windows

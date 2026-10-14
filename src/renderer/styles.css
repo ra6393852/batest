@@ -17,3 +17,6 @@ nav{flex-wrap:wrap}.status{flex:1;min-width:180px}
 .capture-controls select { max-width: 520px; min-width: 240px; }
 .capture-preview img { display: block; max-width: 100%; max-height: 360px; margin-top: 12px; border: 1px solid #43516b; }
 .capture-panel [role="status"] { font-size: 17px; color: #43d4b6; }
+.forecast-matrix .hit-rate { font-size: 21px; }
+.forecast-matrix .latest-scored { background: #15312e; }
+.grading-note { padding: 12px; border: 1px solid #786638; border-radius: 8px; background: #2a2519; color: #f3d493; font-size: 15px; line-height: 1.6; }

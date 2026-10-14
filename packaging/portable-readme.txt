@@ -1,4 +1,4 @@
-Baccarat Live Analyzer 0.5.0 — 게임 창 이미지 자동 가져오기 / Windows 무설치
+Baccarat Live Analyzer 0.5.1 — 게임 창 이미지 자동 가져오기 / Windows 무설치
 
 1. ZIP의 모든 파일을 원하는 폴더에 압축 해제합니다.
 2. Baccarat Live Analyzer.exe를 더블클릭합니다. 설치 작업은 없습니다.

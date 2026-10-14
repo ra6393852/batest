@@ -10,6 +10,27 @@ import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 describe('automatic visual room collection',()=>{
+  it('keeps pre-saved O/X scoring when the same room briefly shows an unsynchronized counter',async()=>{
+    const folder=mkdtempSync(join(tmpdir(),'baccarat-grading-'));let time=new Date('2026-10-14T03:00:00Z');
+    const store=await AnalyzerStore.open(join(folder,'db.sqlite'),()=>time);
+    try{
+      const live=new LiveSession(store),history='PPPPPPPBP'.split('') as Outcome[];
+      const accept=(outcomes:Outcome[],extra:Partial<LiveFrame>={})=>{time=new Date(+time+1000);return live.accept({roomName:'바카라 B',outcomes,total:outcomes.length,complete:true,confidence:1,observedAt:time.toISOString(),...extra});};
+      accept(history);const base=accept(history);const before=store.snapshot(base.roomId,base.shoeId);
+      expect(before.forecasts.find(f=>f.horizon===1&&f.method==='A')?.pick).toBe('B');
+      expect(before.forecasts.find(f=>f.horizon===1&&f.method==='B')?.pick).toBe('P');
+      for(let i=0;i<12;i++)accept(history);
+      const next=[...history,'P' as Outcome];
+      expect(accept(next,{total:9}).state).toBe('blocked');
+      accept(next);accept(next);
+      const after=store.snapshot(base.roomId,base.shoeId);
+      expect(after.results.at(-1)?.historical).toBe(false);
+      expect(after.forecasts.find(f=>f.cutoffRound===9&&f.targetRound===10&&f.method==='A')?.mark).toBe('X');
+      expect(after.stats.advanceAccuracy.A.rate).toBe(0);
+      expect(after.stats.advanceAccuracy.B.rate).toBe(1);
+      expect(after.forecasts.filter(f=>f.cutoffRound===9).map(f=>f.id)).toEqual(before.forecasts.map(f=>f.id));
+    }finally{store.close();rmSync(folder,{recursive:true,force:true});}
+  });
   it('normalizes table names without mixing Korean and international tables, and rejects ambiguous labels',()=>{
     expect(roomFromLines([{text:'Speed Baccarat A $10',confidence:95}])).toBe('스피드 바카라 A');
     expect(roomFromLines([{text:'코리안 스피드 바카라 G ₩10,000',confidence:95}])).toBe('코리안 스피드 바카라 G');

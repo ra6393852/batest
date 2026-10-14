@@ -108,6 +108,8 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
     await expect(page.getByTestId('total-results')).toHaveText('22');
     const original=await page.evaluate(()=>window.analyzer.snapshot());const frozen=original.forecasts.filter(f=>f.cutoffRound===22);
     expect(original.results.map(r=>r.score)).toEqual(points);expect(frozen).toHaveLength(16);
+    await expect(page.getByTestId('method-accuracy-A')).toContainText('채점 대기');
+    await expect(page.getByTestId('grading-wait')).toContainText('23회차부터');
     await expect(page.getByLabel('예측 기준 회차')).toHaveValue('latest');
     for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(22+horizon));
     for(const f of frozen)await expect(page.getByTestId(`forecast-${f.method}-${f.horizon}`)).toHaveText(f.pick);
@@ -120,8 +122,10 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
     await expect(page.getByLabel('예측 기준 회차')).toHaveValue('latest');
     await page.getByLabel('예측 기준 회차').selectOption('22');await expect(page.getByTestId('bundle-accuracy-A')).toContainText('50.00%');
     expect(updated.stats.advanceComparisons).toBe(4);expect(updated.results.slice(22).every(r=>!r.historical)).toBe(true);
+    await expect(page.getByTestId('method-accuracy-A')).toContainText('50.00%');
     await page.getByTestId('forecast-method-A').scrollIntoViewIfNeeded();await page.screenshot({path:'test-results/four-round-graded.png'});
     await page.getByLabel('예측 기준 회차').selectOption('latest');
+    await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
     for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(26+horizon));
     await app.close();app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const reopened=await app.firstWindow();await expect(reopened.getByTestId('total-results')).toHaveText('26');

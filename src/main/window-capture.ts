@@ -67,9 +67,11 @@ export class WindowCapture {
     finally{this.captureBusy=false;}
   }
   private async recognize(image:NativeImage,crop:NativeImage,observedAt:string,generation:number,scanned?:BeadImageResult,firstSeenAt=observedAt){
+    let roomName:string|null=null;
     try{
       const identity=await this.text.read(image);
       if(generation!==this.generation)return;
+      roomName=identity.roomName;
       if(!identity.roomName)throw new Error('방 이름을 읽지 못했습니다. 게임 창 왼쪽 위의 방 이름이 보여야 합니다.');
       if(identity.total==null)throw new Error('전체 결과 수(# 숫자)를 읽지 못했습니다. 그림판 위의 결과 수가 보여야 합니다.');
       const {width,height}=crop.getSize(),bitmap=crop.toBitmap();
@@ -88,7 +90,9 @@ export class WindowCapture {
       const update=this.session.accept({roomName:identity.roomName,total:identity.total,outcomes:analysis.outcomes,
         complete:analysis.completeGrid===true,confidence,observedAt,firstSeenAt,scores:this.scoreCache});
       this.info={...this.info,...update,processedAt:new Date().toISOString()};this.notify(this.current());if(update.changed)this.changed();
-    }catch(error){if(generation===this.generation){const update=this.session.invalid(error instanceof Error?error.message:'그림판 확인 실패');this.info={...this.info,...update,roomId:undefined,roomName:undefined,shoeId:undefined,processedAt:new Date().toISOString()};this.notify(this.current());}}
+    }catch(error){if(generation===this.generation){const message=error instanceof Error?error.message:'그림판 확인 실패';
+      const update=roomName?this.session.hold(roomName,message):this.session.invalid(message);
+      this.info={...this.info,...update,...(!roomName?{roomId:undefined,roomName:undefined,shoeId:undefined}:{}),processedAt:new Date().toISOString()};this.notify(this.current());}}
   }
   async close(){this.stop();await this.text.close();await this.scores.close();}
 }

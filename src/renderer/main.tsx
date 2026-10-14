@@ -104,11 +104,12 @@ function App() {
   const cutoff = selectedCutoff !== 'latest' && cutoffs.includes(selectedCutoff) ? selectedCutoff : cutoffs[0];
   const bundle = snapshot?.forecasts.filter(f => f.cutoffRound === cutoff) ?? [];
   const recentScoredRounds=[...new Set(snapshot?.forecasts.filter(f=>f.horizon===1&&f.mark).map(f=>f.targetRound)??[])].sort((a,b)=>b-a).slice(0,4);
+  const latestScoredRound=recentScoredRounds[0];
   const bestRate = Math.max(...methods.map(m => s?.advanceAccuracy[m].rate ?? -1));
   const bestMethods = methods.filter(m => s?.advanceAccuracy[m].rate === bestRate);
   const captureWaiting=capture?.enabled&&capture.state!=='collecting';
   return <div className="app">
-    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.0</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.1</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span>왼쪽 아래 그림판 · 1초 간격</span></div>
       <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 창을 최소화하지 않고 그림판과 방 이름을 보이게 열어 두면 됩니다.</p>
       <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>
@@ -164,15 +165,17 @@ function App() {
           <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>
           {captureWaiting?<p className="recognition-warning">현재 게임 화면 확인 중 · {capture?.message} · 이전 방의 예측을 표시하지 않습니다.</p>:<div className="table-scroll"><table className="forecast-matrix"><thead>
             <tr><th rowSpan={3}>회차 / 실제</th>{methods.map(method=><th key={method} colSpan={2} data-testid={`forecast-method-${method}`}><b>{method}</b><small>{methodNames[method]}</small></th>)}</tr>
-            <tr>{methods.map(method=>{const a=s?.advanceAccuracy[method];return <th key={method} colSpan={2} data-testid={`method-accuracy-${method}`}>누적 {percent(a?.rate??null)}<small>O {a?.correct??0} / X {(a?.count??0)-(a?.correct??0)}</small></th>;})}</tr>
+            <tr>{methods.map(method=>{const a=s?.advanceAccuracy[method],f=bundle.find(f=>f.method===method&&f.horizon===1);return <th key={method} colSpan={2} data-testid={`method-accuracy-${method}`}><b className="hit-rate">{a?.count?percent(a.rate):'채점 대기'}</b><small>O {a?.correct??0} / X {(a?.count??0)-(a?.correct??0)}<br/>{method==='A'?'8덱 이론값 · 항상 B':`분석 표본 ${f?.sampleSize??0}개${f?.sampleSize===0?' · 이론값 사용':''}`}</small></th>;})}</tr>
             <tr>{methods.flatMap(method=>[<th key={`${method}:pick`}>예상 답</th>,<th key={`${method}:mark`}>O/X</th>])}</tr>
-          </thead><tbody>{[1,2,3,4].map(horizon=>{
-            const actual=bundle.find(f=>f.horizon===horizon&&f.actual)?.actual;
-            return <tr key={horizon} data-testid={`forecast-row-${horizon}`}><th>{cutoff===undefined?'—':cutoff+horizon}<small>{actual?`실제 ${actual}`:'결과 대기'}</small></th>{methods.flatMap(method=>{
+          </thead><tbody>{selectedCutoff==='latest'&&latestScoredRound!==undefined&&<tr className="latest-scored" data-testid="latest-scored-row"><th>최근 {latestScoredRound}<small>실제 {snapshot!.results.find(r=>r.round===latestScoredRound)?.outcome}</small></th>{methods.flatMap(method=>{const f=snapshot!.forecasts.find(f=>f.method===method&&f.horizon===1&&f.targetRound===latestScoredRound);return [<td key={`${method}:recent-pick`} className={f?.pick}><strong>{f?.pick}</strong></td>,<td key={`${method}:recent-mark`} className={f?.mark==='O'?'T':'B'} data-testid={`latest-mark-${method}`}><b>{f?.mark??'제외'}</b></td>];})}</tr>}{[1,2,3,4].map(horizon=>{
+            const known=cutoff===undefined?undefined:snapshot?.results.find(r=>r.round===cutoff+horizon);
+            const actual=bundle.find(f=>f.horizon===horizon&&f.actual)?.actual??known?.outcome;
+            return <tr key={horizon} data-testid={`forecast-row-${horizon}`}><th>{cutoff===undefined?'—':cutoff+horizon}<small>{actual?`실제 ${actual}`:'새 결과 대기'}</small></th>{methods.flatMap(method=>{
               const f=bundle.find(value=>value.horizon===horizon&&value.method===method);
-              return [<td key={`${method}:pick`} className={f?.pick} data-testid={`forecast-${method}-${horizon}`} title={f?`${labels[f.pick]} · ${f.basis} · 표본 ${f.sampleSize}개`:'예측 생성 대기'}><strong>{f?.pick??'—'}</strong></td>,<td key={`${method}:mark`} data-testid={`mark-${method}-${horizon}`} className={f?.mark==='O'?'T':f?.mark==='X'?'B':''}>{f?.mark??'대기'}</td>];
+              return [<td key={`${method}:pick`} className={f?.pick} data-testid={`forecast-${method}-${horizon}`} title={f?`${labels[f.pick]} · ${f.basis} · 표본 ${f.sampleSize}개`:'예측 생성 대기'}><strong>{f?.pick??'—'}</strong></td>,<td key={`${method}:mark`} data-testid={`mark-${method}-${horizon}`} title={known&&!f?.mark?'초기/복원 기록 또는 예측보다 먼저 관측한 결과여서 채점에서 제외합니다.':undefined} className={f?.mark==='O'?'T':f?.mark==='X'?'B':''}>{f?.mark??(known?'제외':'대기')}</td>];
             })}</tr>;
           })}</tbody><tfoot><tr><th>선택 묶음</th>{methods.map(method=>{const fs=bundle.filter(f=>f.method===method),a=accuracy(fs);return <td key={method} colSpan={2} data-testid={`bundle-accuracy-${method}`}>{percent(a.rate)}<small>O {a.correct} / X {a.count-a.correct}<br/>대기 {fs.length-a.count}</small></td>;})}</tr></tfoot></table></div>}
+          {!captureWaiting&&snapshot?.results.length&&s?.advanceComparisons===0?<p className="grading-note" data-testid="grading-wait">채점된 예측 0건 · 처음 읽은 기록은 기준 자료입니다. {latest===undefined?'':`${latest+1}회차부터`} 새 결과가 확인되면 O/X와 적중률을 표시합니다. 다른 방 이동·수집 중단 뒤 복원한 기록은 사후 채점하지 않습니다.</p>:null}
           {!captureWaiting&&recentScoredRounds.length>0&&<div className="table-scroll"><h3>최근 결과 채점 · 즉시 다음 회차 예측</h3><table className="forecast-matrix"><thead><tr><th>회차 / 실제</th>{methods.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody>{recentScoredRounds.map(round=>{const values=snapshot!.forecasts.filter(f=>f.horizon===1&&f.targetRound===round);return <tr key={round} data-testid={`recent-score-${round}`}><th>{round}<small>실제 {values[0]?.actual}</small></th>{methods.map(m=>{const f=values.find(f=>f.method===m);return <td key={m}><strong className={f?.pick}>{f?.pick}</strong> <b className={f?.mark==='O'?'T':'B'}>{f?.mark}</b></td>;})}</tr>;})}</tbody></table></div>}
           {!captureWaiting&&<details className="forecast-probabilities"><summary>추정 확률·표본 보기</summary><table><thead><tr><th>회차</th><th>방식</th><th>B%</th><th>P%</th><th>T%</th><th>표본</th></tr></thead><tbody>{bundle.map(f=><tr key={f.id} title={f.basis}><td>{f.targetRound}</td><td>{f.method}</td>{(['B','P','T'] as Outcome[]).map(o=><td key={o}>{(f.probabilities[o]*100).toFixed(2)}</td>)}<td>{f.sampleSize}</td></tr>)}</tbody></table></details>}
           <p className="note">선택한 기준 회차의 예측값은 고정됩니다. 적중률은 실제 결과가 확인된 예측만 셉니다. 예측 저장 → 새 이미지 관측 순서로 채점합니다. 실제 게임 발생 시각은 자동 확인하지 못하며, 수집 중단·방 이동 중 놓친 기록은 사후 채점하지 않습니다.</p>

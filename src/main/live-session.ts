@@ -16,6 +16,15 @@ export class LiveSession {
   constructor(private store:AnalyzerStore){}
   pause(){this.candidate=undefined;this.active=undefined;}
   invalid(message:string):LiveUpdate {this.pause();return {state:'blocked',message};}
+  hold(roomName:string,message:string):LiveUpdate {
+    const roomId=`screen:${createHash('sha256').update(roomName).digest('hex').slice(0,24)}`;
+    this.candidate=undefined;
+    // A readable, unchanged room with a transient counter/grid mismatch is not
+    // evidence that the user left it. Keep the last verified time; prolonged
+    // gaps, unknown rooms, explicit stop and room changes still exclude grading.
+    if(this.active?.roomId!==roomId)this.active=undefined;
+    return {state:'blocked',roomId,roomName,message};
+  }
   accept(frame:LiveFrame):LiveUpdate {
     const roomId=`screen:${createHash('sha256').update(frame.roomName).digest('hex').slice(0,24)}`;
     const base={roomId,roomName:frame.roomName,rounds:frame.outcomes.length};
@@ -23,7 +32,7 @@ export class LiveSession {
     if(this.candidate?.key===key)this.candidate.repeats++;
     else this.candidate={key,repeats:1,observedAt:frame.firstSeenAt??frame.observedAt,scores:frame.scores};
     if(frame.total!==frame.outcomes.length||(!frame.complete&&frame.total>0))
-      return this.invalid('전체 결과 수와 그림판 개수가 다르거나 시작 열이 잘렸습니다. 누락 기록을 자동으로 만들지 않습니다.');
+      return this.hold(frame.roomName,'전체 결과 수와 그림판 개수가 다르거나 시작 열이 잘렸습니다. 누락 기록을 자동으로 만들지 않습니다.');
     if(frame.confidence<0.92)return {...base,state:'waiting',message:'색상 판독이 불확실합니다. 결과 확정을 보류하고 다음 화면을 확인합니다.'};
     if(this.candidate.repeats<2)return {...base,state:'waiting',message:`${frame.roomName} · 같은 결과를 한 번 더 확인 중`};
     const firstSeen=this.candidate.observedAt;

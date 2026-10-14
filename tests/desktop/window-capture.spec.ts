@@ -35,9 +35,16 @@ test('native game-window capture updates images, automatically switches rooms an
     const initial=await page.evaluate(()=>window.analyzer.snapshot());expect(initial.results.every(r=>r.historical)).toBe(true);
     const before=await page.evaluate(()=>window.analyzer.captureInfo());
     await paint('Speed Baccarat A',aHistory+'B');
+    // Real tables can update the colored road before the total counter.
+    await game.evaluate(()=>{document.getElementById('count')!.textContent='# 22';});
+    await expect(page.getByTestId('capture-status')).toContainText('전체 결과 수와 그림판 개수가 다르거나',{timeout:10000});
+    await game.evaluate(()=>{document.getElementById('count')!.textContent='# 23';});
     await expect(page.getByTestId('capture-status')).toContainText('23회차까지 자동 수집',{timeout:20000});
     await expect(page.getByTestId('total-results')).toHaveText('23');
     const scored=await page.evaluate(()=>window.analyzer.snapshot());expect(scored.stats.advanceAccuracy.A.count).toBe(1);expect(scored.stats.advanceAccuracy.A.rate).toBe(1);
+    await expect(page.getByTestId('method-accuracy-A')).toContainText('100.00%');
+    await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
+    expect(scored.forecasts.filter(f=>f.cutoffRound===22).map(f=>f.id)).toEqual(initial.forecasts.map(f=>f.id));
     expect((await page.evaluate(()=>window.analyzer.captureInfo())).capturedAt).not.toBe(before.capturedAt);
     const bHistory='PPPTBPBBPTB';await paint('Speed Baccarat B',bHistory);
     await expect(page.getByTestId('capture-status')).toContainText('스피드 바카라 B · 11회차까지 자동 수집',{timeout:20000});

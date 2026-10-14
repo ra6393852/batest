@@ -13,6 +13,9 @@ import { ImageImport } from './image-import';
 import { ScoreReader } from './score-reader';
 import { WindowCapture } from './window-capture';
 import {BoardReader} from './board-reader';
+import {AccessLock,passwordKey,isolatedTestDirectory} from './access-lock';
+import {ADMIN_VERIFIER} from './admin-verifier';
+import {CaptureUpdates} from './capture-updates';
 import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
@@ -26,6 +29,7 @@ let chromeBridge: ChromeBridge | undefined;
 const imageImport = new ImageImport();
 let scoreReader: ScoreReader | undefined;
 let windowCapture: WindowCapture | undefined;
+let access:AccessLock;
 async function inspectImage(image: NativeImage): Promise<ImageReview | ImagePreview> {
   imageImport.invalidate();
   if (image.isEmpty()) throw new Error('이미지가 없습니다. 그림판을 캡처해 복사한 뒤 이미지 붙여넣기를 누르세요.');
@@ -59,11 +63,12 @@ const isSmoke = process.argv.includes('--smoke-test');
 // Smoke tests use an isolated DB and session, never the user's records or login state.
 if (isSmoke) { const dataArg = process.argv.find(v => v.startsWith('--test-data='));
   if (!dataArg) throw new Error('Smoke test requires an isolated --test-data directory');
-  app.setPath('userData', dataArg.slice('--test-data='.length)); }
+  app.setPath('userData', isolatedTestDirectory(dataArg.slice('--test-data='.length))); }
 const boundsSchema = z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), width: z.number().int().min(1), height: z.number().int().min(1) }).strict();
-function local(event: IpcMainInvokeEvent | IpcMainEvent) {
+function local(event: IpcMainInvokeEvent | IpcMainEvent,requireUnlock=true) {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== rendererURL)
     throw new Error('허용되지 않은 호출입니다.');
+  if(requireUnlock&&access.status().locked)throw new Error('관리자 암호로 잠금을 해제하세요.');
 }
 function remote(event: IpcMainInvokeEvent | IpcMainEvent) {
   if (!browser || event.sender !== browser.webContents || event.senderFrame !== browser.webContents.mainFrame) throw new Error('허용되지 않은 수집 호출입니다.');
@@ -110,6 +115,9 @@ if (!app.requestSingleInstanceLock()) {
 } else {
 app.on('second-instance', () => { if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.focus(); } });
 void app.whenReady().then(async () => {
+  const fixturePassword=isSmoke?process.env.DESKTOP_TEST_PASSWORD:undefined;
+  const verifier=fixturePassword?{salt:ADMIN_VERIFIER.salt,digest:(await passwordKey(fixturePassword,ADMIN_VERIFIER.salt)).toString('hex')}:ADMIN_VERIFIER;
+  access=new AccessLock(verifier);
   store = await AnalyzerStore.open(join(app.getPath('userData'), 'baccarat.sqlite'));
   const profilePath = join(app.getPath('userData'), 'adapter-profile.json');
   if (existsSync(profilePath)) { try { profile = profileSchema.parse(JSON.parse(readFileSync(profilePath, 'utf8'))); } catch { profile = null; } }
@@ -122,8 +130,13 @@ void app.whenReady().then(async () => {
   const ocrResources=app.isPackaged?join(process.resourcesPath,'ocr'):null;
   const workerFile=ocrResources?join(ocrResources,'worker.cjs'):join(__dirname,'ocr-worker.cjs');
   const boardWorker=app.isPackaged?join(process.resourcesPath,'analysis','board-worker.cjs'):join(__dirname,'board-worker.cjs');
+  const captureUpdates=new CaptureUpdates();
   windowCapture=new WindowCapture(store,new ScoreReader(ocrResources,workerFile),new BoardReader(boardWorker),
-    info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',info);},changed);
+    info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',captureUpdates.next(info));},changed);
+  ipcMain.handle('access:status',event=>{local(event,false);return access.status();});
+  let chromeStarting:Promise<void>|undefined;
+  ipcMain.handle('access:unlock',async(event,password)=>{local(event,false);const result=await access.unlock(password);
+    if(!result.locked){chromeStarting??=startChromeBridge();await chromeStarting;}return result;});
   ipcMain.handle('capture:windows',async event=>{local(event);return windowCapture!.windows();});
   ipcMain.handle('capture:start',async(event,id)=>{local(event);await windowCapture!.start(z.string().regex(/^window:\d+:\d+$/).parse(id));});
   ipcMain.handle('capture:stop',event=>{local(event);windowCapture!.stop();});
@@ -131,13 +144,13 @@ void app.whenReady().then(async () => {
   ipcMain.handle('capture:new-shoe',event=>{local(event);windowCapture!.newShoe();});
   const dragPoint=z.object({x:z.number().finite().min(-32768).max(32768),y:z.number().finite().min(-32768).max(32768)}).strict();
   let windowDrag:{x:number;y:number;wx:number;wy:number}|undefined;
-  ipcMain.on('window:drag-start',(event,raw)=>{local(event);const p=dragPoint.safeParse(raw);if(!p.success)return;const [wx,wy]=window.getPosition();windowDrag={...p.data,wx,wy};});
-  ipcMain.on('window:drag-move',(event,raw)=>{local(event);const p=dragPoint.safeParse(raw);if(!windowDrag||!p.success)return;
+  ipcMain.on('window:drag-start',(event,raw)=>{local(event,false);const p=dragPoint.safeParse(raw);if(!p.success)return;const [wx,wy]=window.getPosition();windowDrag={...p.data,wx,wy};});
+  ipcMain.on('window:drag-move',(event,raw)=>{local(event,false);const p=dragPoint.safeParse(raw);if(!windowDrag||!p.success)return;
     window.setPosition(Math.round(windowDrag.wx+p.data.x-windowDrag.x),Math.round(windowDrag.wy+p.data.y-windowDrag.y));});
-  ipcMain.on('window:drag-end',event=>{local(event);windowDrag=undefined;});
+  ipcMain.on('window:drag-end',event=>{local(event,false);windowDrag=undefined;});
   window.on('blur',()=>{windowDrag=undefined;});
   const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
-  if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
+  async function startChromeBridge(){if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
     chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,
       rows => { store.ingest(rows); changed(); }, notifyChrome,
       (message, collecting) => status(collecting ? 'collecting' : 'unsupported', message, collecting ? 'visible-only' : 'unknown'));
@@ -145,7 +158,7 @@ void app.whenReady().then(async () => {
       // Keep offline analysis available if another local application owns the port.
       await chromeBridge.close(); chromeBridge = undefined;
     }
-  }
+  }}
   ipcMain.handle('chrome:info', event => { local(event); return chromeBridge?.info() ?? { state: isSmoke ? 'waiting' : 'error', paired: false, pairingCode: null, tabs: 0, targets: [], profileConfigured: false,
     message: isSmoke ? '로컬 테스트 모드 · Chrome 연결 꺼짐' : 'Chrome 연결 포트 38741 사용 실패 · 다른 분석기 인스턴스를 확인하세요.' }; });
   ipcMain.handle('chrome:reset', event => { local(event); chromeBridge?.reset(); });

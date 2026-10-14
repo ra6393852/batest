@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
+  accessStatus:()=>ipcRenderer.invoke('access:status'),
+  unlock:password=>ipcRenderer.invoke('access:unlock',password),
   beginWindowDrag: point=>ipcRenderer.send('window:drag-start',point),
   moveWindowDrag: point=>ipcRenderer.send('window:drag-move',point),
   endWindowDrag: ()=>ipcRenderer.send('window:drag-end'),

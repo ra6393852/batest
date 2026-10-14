@@ -1,3 +1,4 @@
+import {unlockApp} from './access-helper';
 import { _electron as electron, test, expect, type ElectronApplication } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,7 +14,7 @@ test('automatic fixture collection, causal scoring, room/shoe separation and res
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])],
       env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: 'false' },
     });
-    app = await launch(); const page = await app.firstWindow();
+    app = await launch(); const page = await app.firstWindow();await unlockApp(page);
     await expect(page.getByRole('heading', { name: 'Baccarat Live Analyzer' })).toBeVisible();
     await expect(page.getByRole('button', { name: '테스트 화면', exact: true })).toHaveCount(0);
     // Collector integration remains an internal fixture, outside the clipboard-only UI.
@@ -50,7 +51,7 @@ test('automatic fixture collection, causal scoring, room/shoe separation and res
     });
     try { const recognized = await worker.recognize(image); expect(parseOCR(recognized.data.text, recognized.data.confidence)?.outcome).toBe('B'); }
     finally { await worker.terminate(); }
-    await app.close(); app = await launch(); const reopened = await app.firstWindow();
+    await app.close(); app = await launch(); const reopened = await app.firstWindow();await unlockApp(reopened);
     await expect(reopened.getByRole('heading', { name: 'Baccarat Live Analyzer' })).toBeVisible();
     const restored = await reopened.evaluate(() => window.analyzer.snapshot('demo-alpha', 'demo-shoe-1'));
     expect(restored.results).toHaveLength(8); expect(restored.stats.comparisons).toBe(2);

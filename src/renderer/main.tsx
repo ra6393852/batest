@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { methods, type AnalyzerAPI, type Snapshot, type Outcome, type ImageReview, type ImagePreview, type RecognitionDiagnostics, type CaptureWindow, type CaptureInfo } from '../shared/types';
 import { accuracy } from '../analysis/engine';
 import { expandImageSequence } from '../shared/image-sequence';
+import {reviewHistory} from '../analysis/history-review';
+import type {AccessStatus} from '../shared/types';
 import './styles.css';
 declare global { interface Window { analyzer: AnalyzerAPI } }
 const labels: Record<Outcome, string> = { B: '뱅커', P: '플레이어', T: '타이' };
@@ -39,6 +41,19 @@ function CapturePreview({capture}:{capture:CaptureInfo}){
     <img data-testid="capture-preview" draggable={false} src={zoom===1?(capture.originalPreview??capture.preview):capture.preview} alt="자동으로 가져온 그림판"/>
   </div></div>;
 }
+function AccessGate(){
+  const [access,setAccess]=useState<AccessStatus>(),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{void window.analyzer.accessStatus().then(setAccess).catch(()=>setError('프로그램 잠금 상태를 확인하지 못했습니다.'));},[]);
+  useEffect(()=>{if(!access?.retryAfterMs)return;const timer=setTimeout(()=>setAccess(value=>value?{...value,retryAfterMs:0}:value),access.retryAfterMs);return()=>clearTimeout(timer);},[access?.retryAfterMs]);
+  if(access&&!access.locked)return <App/>;
+  return <div className="access-screen"><form className="access-card" onSubmit={e=>{e.preventDefault();if(busy||!access||access.retryAfterMs)return;setBusy(true);setError('');
+    void window.analyzer.unlock(password).then(result=>{setAccess(result);if(result.locked)setError(result.retryAfterMs?'잠시 후 다시 시도하세요.':'암호가 일치하지 않습니다.');else setPassword('');})
+      .catch(()=>setError('잠금을 해제하지 못했습니다.')).finally(()=>setBusy(false));}}>
+    <span className="eyebrow">관리자 잠금</span><h1>Baccarat <span>Live Analyzer</span></h1><p>프로그램을 사용하려면 관리자 암호를 입력하세요.</p>
+    <label>관리자 암호<input autoFocus type="password" autoComplete="off" aria-label="관리자 암호" value={password} maxLength={128} onChange={e=>setPassword(e.target.value)}/></label>
+    {error&&<p role="alert">{error}</p>}<button disabled={busy||!access||!!access.retryAfterMs||!password}>{busy?'확인 중…':'잠금 해제'}</button>
+  </form></div>;
+}
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [selectedRoom, setRoom] = useState<string>(), [selectedShoe, setShoe] = useState<string>();
@@ -49,7 +64,7 @@ function App() {
   const [tieCounts, setTieCounts] = useState<Record<number, string>>({});
   const [imageScores, setImageScores] = useState<string[]>([]);
   const [forecastSelection, setForecastSelection] = useState<{ key: string; cutoff: number | 'latest' }>();
-  const [showAllGrades,setShowAllGrades]=useState(false);
+  const [showAllGrades,setShowAllGrades]=useState(true);
   const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
   const reviewPanel = useRef<HTMLDivElement>(null), request = useRef(0), imageReading = useRef(false);
   const draggingWindow=useRef(false);
@@ -61,7 +76,7 @@ function App() {
   }, [selectedRoom, selectedShoe]);
   useEffect(() => { void load(); return window.analyzer.onChange(() => { void load(); }); }, [load]);
   useEffect(()=>{
-    const receive=(info:CaptureInfo)=>{setCapture(info);if(info.enabled&&info.state==='collecting'&&info.roomId&&info.shoeId){setRoom(info.roomId);setShoe(info.shoeId);}};
+    const receive=(info:CaptureInfo)=>{setCapture(previous=>info.previewUnchanged?{...info,preview:previous?.preview,originalPreview:previous?.originalPreview}:info);if(info.enabled&&info.state==='collecting'&&info.roomId&&info.shoeId){setRoom(info.roomId);setShoe(info.shoeId);}};
     void window.analyzer.captureInfo().then(receive);return window.analyzer.onCapture(receive);
   },[]);
   async function action(fn: () => Promise<unknown>) { setBusy(true); setError(''); try { await fn(); await load(); } catch(error) { setError(error instanceof Error?error.message.split('Error:').at(-1)!.trim():'작업 실패 · 입력 형식이나 기존 회차 충돌을 확인하세요.'); } finally { setBusy(false); } }
@@ -120,9 +135,27 @@ function App() {
   const selectedCutoff = forecastSelection?.key === forecastKey ? forecastSelection.cutoff : 'latest';
   const cutoff = selectedCutoff !== 'latest' && cutoffs.includes(selectedCutoff) ? selectedCutoff : cutoffs[0];
   const bundle = snapshot?.forecasts.filter(f => f.cutoffRound === cutoff) ?? [];
-  const scoredRounds=[...new Set(snapshot?.forecasts.filter(f=>f.mark).map(f=>f.targetRound)??[])].sort((a,b)=>a-b);
-  const recentScoredRounds=showAllGrades?scoredRounds:scoredRounds.slice(-7);
+  const history=useMemo(()=>reviewHistory(snapshot?.results??[]),[snapshot?.results]);
+  const historyByRound=useMemo(()=>new Map(history.rows.map(row=>[row.round,row])),[history]);
+  const pastForecasts=useMemo(()=>{
+    const index=new Map<string,Snapshot['forecasts'][number]>();
+    for(const f of snapshot?.forecasts??[])if(f.mark){const key=`${f.targetRound}:${f.method}`,old=index.get(key);if(!old||f.cutoffRound>old.cutoffRound)index.set(key,f);}
+    return index;
+  },[snapshot?.forecasts]);
+  const scoredRounds=useMemo(()=>[...new Set([...pastForecasts.values()].map(f=>f.targetRound))].sort((a,b)=>a-b),[pastForecasts]);
+  const recentScoredRounds=useMemo(()=>showAllGrades?history.rows.map(row=>row.round):scoredRounds.slice(-7),[showAllGrades,history.rows,scoredRounds]);
   const latestScoredRound=scoredRounds.at(-1);
+  const renderedPastRows=useMemo(()=>recentScoredRounds.map(round=>{
+            const row=historyByRound.get(round)!;
+            const live=pastForecasts.has(`${round}:A`);
+            return <tr key={`past:${round}`} className={live?(round===latestScoredRound?'latest-scored':'scored-round'):'retrospective-row'} data-testid={`history-round-${round}`} data-round={round}>
+              <th>{round}<small>실제 {row.actual}</small><small className="record-kind">{live?'사전 예측':'과거 검증'}</small></th>{methods.flatMap(method=>{
+                const f=pastForecasts.get(`${round}:${method}`),model=row.models.find(m=>m.method===method)!;
+                const pick=f?.pick??model.pick,mark=f?.mark??model.mark;
+                return [<td key={`${method}:past-pick`} className={pick} title={f?`${f.cutoffRound}회차 기준 · ${f.horizon}회차 앞 · ${f.basis}`:`과거 검증 · 앞선 ${row.priorCount}개 결과만 사용 · ${model.basis}`}><strong>{pick}</strong></td>,
+                  <td key={`${method}:past-mark`} className={mark==='O'?'T':'B'} data-testid={round===latestScoredRound&&f?`latest-mark-${method}`:undefined} data-kind={f?'live':'backtest'}><b>{mark}</b></td>];
+              })}</tr>;
+          }),[recentScoredRounds,historyByRound,pastForecasts,latestScoredRound]);
   const bestRate = Math.max(...methods.map(m => s?.advanceAccuracy[m].rate ?? -1));
   const bestMethods = methods.filter(m => s?.advanceAccuracy[m].rate === bestRate);
   const captureWaiting=capture?.enabled&&(capture.state!=='collecting'||capture.roomId!==snapshot?.roomId||capture.shoeId!==snapshot?.shoeId||capture.rounds!==latest);
@@ -192,13 +225,20 @@ function App() {
       <div className="right-pane">
         <section className="forecast-panel"><div className="panel-title"><h2>다음 4회차 예측 · O/X</h2><span data-testid="forecast-basis-title">{captureWaiting?'현재 그림판 확인 중 · 예측 기준 갱신 대기':cutoff !== undefined ? `${cutoff}회차 기준 · ${cutoff + 1}~${cutoff + 4}회차` : '결과 기록 대기'}</span></div>
           {!captureWaiting&&<label className="forecast-cutoff">예측 기준 회차<select aria-label="예측 기준 회차" value={selectedCutoff} onChange={e => setForecastSelection({ key: forecastKey, cutoff: e.target.value === 'latest' ? 'latest' : Number(e.target.value) })}><option value="latest">최신 완료 회차 기준 (자동 갱신)</option>{cutoffs.map(value => <option key={value} value={value}>{value}회차 기준 → {value + 1}~{value + 4}회차{value === latest ? ' (최신)' : ''}</option>)}</select></label>}
+          {!captureWaiting&&selectedCutoff==='latest'&&<div className="history-view-controls" role="group" aria-label="회차 보기">
+            <button className={showAllGrades?'':'secondary'} aria-pressed={showAllGrades} onClick={()=>setShowAllGrades(true)}>1회차부터 보기</button>
+            <button className={!showAllGrades?'':'secondary'} aria-pressed={!showAllGrades} onClick={()=>setShowAllGrades(false)}>실시간 보기</button>
+          </div>}
+          {showAllGrades&&history.rows.length>0&&<div className="history-summary" data-testid="history-summary"><b>과거 검증 · {history.rows.length}회</b><span>각 판보다 앞선 기록만 사용한 재계산입니다. 실제 사전 예측 적중률과 별도로 셉니다.</span>
+            <div>{methods.map(m=><span key={m} data-testid={`history-accuracy-${m}`}>{m} <b>{percent(history.accuracy[m].rate)}</b> · O {history.accuracy[m].correct} / X {history.accuracy[m].count-history.accuracy[m].correct}</span>)}</div>
+          </div>}
           {snapshot?.results.length && snapshot.results.every(result => result.source === 'demo') ? <p className="recognition-warning" data-testid="demo-data-warning">테스트 기록 분석 · 실제 Chrome 게임의 결과와 연결된 추정값이 아닙니다.</p> : null}
-          <p className="note forecast-legend">적중률 = O / (O + X) · A: 8덱 이론값 · B/C/D: 과거 패턴 추정</p>
+          <p className="note forecast-legend">사전 예측 적중률 = O / (O + X) · A: 8덱 이론값 · B/C/D: 과거 패턴 추정</p>
           {captureWaiting&&<p className="forecast-state-note">그림판 판독 대기 · 아래 적중률은 저장된 기록 기준입니다.</p>}<div className="table-scroll"><table className="forecast-matrix"><thead>
             <tr><th rowSpan={3}>회차 / 실제</th>{methods.map(method=><th key={method} colSpan={2} data-testid={`forecast-method-${method}`}><b>{method}</b><small>{methodNames[method]}</small></th>)}</tr>
             <tr>{methods.map(method=>{const a=s?.advanceAccuracy[method],f=bundle.find(f=>f.method===method&&f.horizon===1);return <th key={method} colSpan={2} data-testid={`method-accuracy-${method}`}><b className="hit-rate">{a?.count?percent(a.rate):'채점 대기'}</b><small>O {a?.correct??0} / X {(a?.count??0)-(a?.correct??0)}<br/>{method==='A'?'8덱 이론값 · 항상 B':`분석 표본 ${f?.sampleSize??0}개${f?.sampleSize===0?' · 이론값 사용':''}`}</small></th>;})}</tr>
             <tr>{methods.flatMap(method=>[<th key={`${method}:pick`}>예상 답</th>,<th key={`${method}:mark`}>O/X</th>])}</tr>
-          </thead><tbody>{captureWaiting?<tr><td colSpan={9}>현재 그림판 확인 후 다음 4회차 예측을 표시합니다.</td></tr>:<>{selectedCutoff==='latest'&&recentScoredRounds.map(round=><tr key={`scored:${round}`} className={round===latestScoredRound?'latest-scored':'scored-round'} data-testid={`recent-score-${round}`} data-round={round}><th>{round}<small>실제 {snapshot!.results.find(r=>r.round===round)?.outcome}</small></th>{methods.flatMap(method=>{const f=snapshot!.forecasts.filter(f=>f.method===method&&f.mark&&f.targetRound===round).sort((a,b)=>b.cutoffRound-a.cutoffRound)[0];return [<td key={`${method}:recent-pick`} className={f?.pick} title={f?`${f.cutoffRound}회차 기준 · ${f.horizon}회차 앞 · ${f.basis}`:undefined}><strong>{f?.pick}</strong></td>,<td key={`${method}:recent-mark`} className={f?.mark==='O'?'T':'B'} data-testid={round===latestScoredRound?`latest-mark-${method}`:undefined}><b>{f?.mark??'제외'}</b></td>];})}</tr>)}{[1,2,3,4].map(horizon=>{
+          </thead><tbody>{captureWaiting?<tr><td colSpan={9}>현재 그림판 확인 후 다음 4회차 예측을 표시합니다.</td></tr>:<>{selectedCutoff==='latest'&&renderedPastRows}{[1,2,3,4].map(horizon=>{
             const known=cutoff===undefined?undefined:snapshot?.results.find(r=>r.round===cutoff+horizon);
             const actual=bundle.find(f=>f.horizon===horizon&&f.actual)?.actual??known?.outcome;
             return <tr key={horizon} data-testid={`forecast-row-${horizon}`} data-round={cutoff===undefined?undefined:cutoff+horizon}><th>{cutoff===undefined?'—':cutoff+horizon}<small>{actual?`실제 ${actual}`:'대기'}</small></th>{methods.flatMap(method=>{
@@ -207,7 +247,7 @@ function App() {
             })}</tr>;
           })}</>}</tbody>{!captureWaiting&&<tfoot><tr><th>선택 묶음</th>{methods.map(method=>{const fs=bundle.filter(f=>f.method===method),a=accuracy(fs);return <td key={method} colSpan={2} data-testid={`bundle-accuracy-${method}`}>{percent(a.rate)}<small>O {a.correct} / X {a.count-a.correct}<br/>대기 {fs.length-a.count}</small></td>;})}</tr></tfoot>}</table></div>
           {!captureWaiting&&snapshot?.results.length&&s?.advanceComparisons===0?<p className="grading-note" data-testid="grading-wait">채점된 예측 0건 · 처음 읽은 기록은 기준 자료입니다. {latest===undefined?'':`${latest+1}회차부터`} 새 결과가 확인되면 O/X와 적중률을 표시합니다. 다른 방 이동·수집 중단 뒤 복원한 기록은 사후 채점하지 않습니다.</p>:null}
-          {!captureWaiting&&selectedCutoff==='latest'&&scoredRounds.length>7&&<button className="quiet" aria-pressed={showAllGrades} onClick={()=>setShowAllGrades(value=>!value)}>{showAllGrades?'최근 7회만 보기':`이전 채점 포함 전체 ${scoredRounds.length}회 보기`}</button>}
+
           {!captureWaiting&&<details className="forecast-probabilities"><summary>추정 확률·표본 보기</summary><table><thead><tr><th>회차</th><th>방식</th><th>B%</th><th>P%</th><th>T%</th><th>표본</th></tr></thead><tbody>{bundle.map(f=><tr key={f.id} title={f.basis}><td>{f.targetRound}</td><td>{f.method}</td>{(['B','P','T'] as Outcome[]).map(o=><td key={o}>{(f.probabilities[o]*100).toFixed(2)}</td>)}<td>{f.sampleSize}</td></tr>)}</tbody></table></details>}
           <details className="forecast-help"><summary>예측·채점 기준</summary><p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p><p className="note">선택한 기준 회차의 예측값은 고정됩니다. 적중률은 실제 결과가 확인된 예측만 셉니다. 예측 저장 → 새 이미지 관측 순서로 채점합니다. 실제 게임 발생 시각은 자동 확인하지 못하며, 수집 중단·방 이동 중 놓친 기록은 사후 채점하지 않습니다.</p><p className="note">과거 행은 해당 회차에 대한 가장 최근 기준의 채점된 예측을 표시합니다. 누적 적중률은 보존된 4회차 사전 예측 전체 기준입니다. 원래 저장한 예측값은 수정하지 않습니다.</p></details>
         </section>
@@ -236,4 +276,4 @@ function App() {
     </main>
   </div>;
 }
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(<AccessGate/>);

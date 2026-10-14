@@ -1,3 +1,4 @@
+import {unlockApp} from './access-helper';
 import { _electron as electron, test, expect, type ElectronApplication } from '@playwright/test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +11,7 @@ test('image Ctrl+V works on dashboard and focused inputs while text paste stays 
   try {
     app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
-    const page = await app.firstWindow();
+    const page = await app.firstWindow();await unlockApp(page);
     await expect(page.getByRole('group', { name: '그림판 캡처 붙여넣기 안내' })).toContainText('Win');
     await expect(page.getByRole('button',{name:'게임 창 선택',exact:true})).toBeVisible();
     await expect(page.getByRole('button', { name: 'Chrome 확장 설치 폴더', exact: true })).toHaveCount(0);
@@ -80,7 +81,7 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
   const points=[5,7,9,2,5,9,6,5,7,7,4,8,8,4,7,6,9,8,2,3,7,6];
   try {
     app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
-    const page=await app.firstWindow();
+    const page=await app.firstWindow();await unlockApp(page);
     await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer',exact:true})).toBeVisible();
     const copy=async (values:typeof outcomes,scores:number[])=>{
       const encoded=await page.evaluate(({values,scores})=>{
@@ -109,6 +110,9 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
     const original=await page.evaluate(()=>window.analyzer.snapshot());const frozen=original.forecasts.filter(f=>f.cutoffRound===22);
     expect(original.results.map(r=>r.score)).toEqual(points);expect(frozen).toHaveLength(16);
     await expect(page.getByTestId('method-accuracy-A')).toContainText('채점 대기');
+    await expect(page.getByTestId('history-summary')).toContainText('과거 검증 · 22회');
+    await expect(page.getByTestId('history-round-1')).toContainText('과거 검증');
+    expect(await page.getByTestId('history-round-1').locator('[data-kind="backtest"]').count()).toBe(4);
     await expect(page.getByTestId('grading-wait')).toContainText('23회차부터');
     await expect(page.getByLabel('예측 기준 회차')).toHaveValue('latest');
     for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(22+horizon));
@@ -129,9 +133,9 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
     for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(26+horizon));
     // Include graded horizons 2–4 when no immediate-next-round forecast exists.
     // Batch updates still give one continuous chronological table, not 23→27.
-    expect(await page.locator('.forecast-matrix tbody tr[data-round]').evaluateAll(rows=>rows.map(row=>Number((row as HTMLElement).dataset.round)))).toEqual([23,24,25,26,27,28,29,30]);
+    expect(await page.locator('.forecast-matrix tbody tr[data-round]').evaluateAll(rows=>rows.map(row=>Number((row as HTMLElement).dataset.round)))).toEqual(Array.from({length:30},(_,i)=>i+1));
     await app.close();app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
-    const reopened=await app.firstWindow();await expect(reopened.getByTestId('total-results')).toHaveText('26');
+    const reopened=await app.firstWindow();await unlockApp(reopened);await expect(reopened.getByTestId('total-results')).toHaveText('26');
     expect((await reopened.evaluate(()=>window.analyzer.snapshot())).forecasts.filter(f=>f.cutoffRound===22).every(f=>f.actual)).toBe(true);
   }finally{await app?.close().catch(()=>{});rmSync(folder,{recursive:true,force:true});}
 });
@@ -143,7 +147,7 @@ test('clipboard preview, correction, confirmation, deduplication and restart per
     args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])],
   });
   try {
-    app = await launch(); const page = await app.firstWindow();
+    app = await launch(); const page = await app.firstWindow();await unlockApp(page);
     await expect(page.getByRole('button', { name: '클립보드 이미지 붙여넣기 (Ctrl+V)', exact: true })).toBeVisible();
     const encoded = await page.evaluate(() => {
       const canvas = document.createElement('canvas'); canvas.width = 120; canvas.height = 250;
@@ -188,7 +192,7 @@ test('clipboard preview, correction, confirmation, deduplication and restart per
     await page.getByRole('button', { name: '확인한 그림판 기록 저장' }).click();
     await expect(page.getByTestId('image-save-status')).toContainText('새 기록 0개');
     await page.screenshot({ path: 'test-results/image-dashboard.png' });
-    await app.close(); app = await launch(); const reopened = await app.firstWindow();
+    await app.close(); app = await launch(); const reopened = await app.firstWindow();await unlockApp(reopened);
     await expect(reopened.getByTestId('total-results')).toHaveText('9');
     expect((await reopened.evaluate(() => window.analyzer.snapshot())).results[0].outcome).toBe('P');
   } finally { await app?.close().catch(() => {}); rmSync(folder, { recursive: true, force: true }); }
@@ -199,7 +203,7 @@ test('Ctrl+V reads a big road without grid lines, with tails and split tie rings
   try {
     app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
-    const page = await app.firstWindow(), road = circleRoadBitmap();
+    const page = await app.firstWindow(), road = circleRoadBitmap();await unlockApp(page);
     await app.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
       const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
       await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
@@ -232,7 +236,7 @@ test('15-round tie review, original/150% zoom and larger text', async () => {
   try {
     app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
-    const page = await app.firstWindow(), road = shortTieRoadBitmap();
+    const page = await app.firstWindow(), road = shortTieRoadBitmap();await unlockApp(page);
     await app.evaluate(async ({ nativeImage, clipboard, ClipboardItem }, input) => {
       const png = nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG();
       await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(png)], { type: 'image/png' }) })]);
@@ -274,7 +278,7 @@ test('small clipboard grids, missing outer borders, watermark, ties and stored f
   try {
     app = await electron.launch({ executablePath: process.env.DESKTOP_TEST_EXECUTABLE,
       args: ['.', '--smoke-test', `--test-data=${folder}`, ...(process.platform === 'linux' && process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST === '1' ? ['--no-sandbox'] : [])] });
-    const page = await app.firstWindow();
+    const page = await app.firstWindow();await unlockApp(page);
     const bead = smallRoadBitmap('bead', true);
     const png = await app.evaluate(({ nativeImage }, input) => nativeImage.createFromBitmap(Buffer.from(input.bitmap, 'base64'), { width: input.width, height: input.height }).toPNG().toString('base64'), { width: bead.width, height: bead.height, bitmap: Buffer.from(bead.bitmap).toString('base64') });
     await app.evaluate(async ({ clipboard, ClipboardItem }, value) => {

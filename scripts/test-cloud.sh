@@ -31,4 +31,4 @@ export ALLOW_UNSANDBOXED_FIXTURE_TEST=1
 # The installed system Chromium is newer than this Playwright runtime and fails
 # extension startup in this container. Chrome integration runs on Windows CI
 # with Playwright's matched Chrome for Testing, alongside the installed EXE.
-npx --no-install playwright test app.spec.ts image-import.spec.ts window-capture.spec.ts "$@"
+npx --no-install playwright test access.spec.ts app.spec.ts image-import.spec.ts window-capture.spec.ts "$@"

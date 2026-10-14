@@ -45,6 +45,8 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
+  accessStatus():Promise<AccessStatus>;
+  unlock(password:string):Promise<AccessStatus>;
   captureWindows(): Promise<CaptureWindow[]>;
   captureStart(id: string): Promise<void>;
   captureStop(): Promise<void>;
@@ -81,7 +83,9 @@ export interface CaptureInfo {
   roomId?: string; roomName?: string; shoeId?: string; rounds?: number;
   originalPreview?:string; recognitionScale?:2; recognitionMs?:number; appVersion?:string; detectedResults?:number;
   analysisMs?:number; reusedFrame?:boolean; scannedPixels?:number;
+  previewUnchanged?:boolean;
 }
+export interface AccessStatus {locked:boolean;retryAfterMs:number}
 export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];
   format: 'bead' | 'big-road'; tieAfter: number[]; diagnostics?: RecognitionDiagnostics;

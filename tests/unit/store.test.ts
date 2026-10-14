@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it,vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import initSqlJs from 'sql.js';
+import initSqlJs,{type Database} from 'sql.js';
 import { AnalyzerStore } from '../../src/main/store';
 import type { Observation } from '../../src/shared/types';
 let store: AnalyzerStore, folder: string, file: string, time: number;
@@ -13,6 +13,15 @@ beforeEach(async () => { folder = mkdtempSync(join(tmpdir(), 'baccarat-store-'))
   store = await AnalyzerStore.open(file, () => new Date(time)); });
 afterEach(() => { store.close(); rmSync(folder, { recursive: true, force: true }); });
 describe('SQLite results and immutable forecasts', () => {
+  it('reuses unchanged statistics without SQL reads, isolates caller edits and refreshes after results and scores',()=>{
+    store.ingest([sample(1)]);const first=store.snapshot();
+    const db=(store as unknown as {db:Database}).db,reads=vi.spyOn(db,'prepare');
+    first.results[0].outcome='T';first.stats.total=999;
+    expect(store.snapshot().results[0].outcome).toBe('B');expect(store.snapshot().stats.total).toBe(1);expect(reads).not.toHaveBeenCalled();
+    tick();store.ingest([sample(2)]);const next=store.snapshot();expect(next.results).toHaveLength(2);expect(next.stats.comparisons).toBe(1);
+    const frozen=structuredClone(next.forecasts);store.ingest([sample(2,{score:7})]);
+    expect(store.snapshot().results[1].score).toBe(7);expect(store.snapshot().forecasts).toEqual(frozen);reads.mockRestore();
+  });
   it('persists results and forecasts across a restart', async () => {
     store.ingest([sample(1)]); store.close(); store = await AnalyzerStore.open(file, () => new Date(time));
     expect(store.snapshot().results).toHaveLength(1); expect(store.snapshot().forecasts).toHaveLength(16);

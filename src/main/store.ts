@@ -47,6 +47,7 @@ CREATE TRIGGER IF NOT EXISTS immutable_point_delete BEFORE DELETE ON result_scor
 PRAGMA user_version=2;
 `;
 export class AnalyzerStore {
+  private snapshotCache=new Map<string,Snapshot>();
   private constructor(private sql: SqlJsStatic, private db: Database, private file: string,
     private clock: () => Date) {}
   static async open(file: string, clock = () => new Date()) {
@@ -86,9 +87,10 @@ export class AnalyzerStore {
     try { renameSync(temp, this.file); } catch (error) { if (existsSync(temp)) unlinkSync(temp); throw error; }
   }
   private transaction<T>(fn: () => T): T {
+    this.snapshotCache.clear();
     const before = this.db.export();
     try { this.db.run('BEGIN IMMEDIATE'); const result = fn(); this.db.run('COMMIT'); this.persist(); return result; }
-    catch (error) { this.db.close(); this.db = new this.sql.Database(before); this.db.run('PRAGMA foreign_keys=ON'); throw error; }
+    catch (error) { this.snapshotCache.clear(); this.db.close(); this.db = new this.sql.Database(before); this.db.run('PRAGMA foreign_keys=ON'); throw error; }
   }
   private stage(o: Observation, reason: string, at: string) {
     const key = JSON.stringify([o.roomId, o.shoeId, o.round, o.outcome, ...(o.score === undefined ? [] : [o.score])]);
@@ -204,6 +206,8 @@ export class AnalyzerStore {
     });
   }
   snapshot(roomId?: string, shoeId?: string): Snapshot {
+    const cacheKey=JSON.stringify([roomId??null,shoeId??null]);
+    const cached=this.snapshotCache.get(cacheKey);if(cached)return structuredClone(cached);
     const rooms: Room[] = this.rows('SELECT * FROM rooms ORDER BY updated_at DESC,id').map(r => ({
       id: String(r.id), name: String(r.name), updatedAt: String(r.updated_at),
       shoes: this.rows('SELECT shoe_id,MAX(recorded_at) AS last FROM results WHERE room_id=? GROUP BY shoe_id ORDER BY last DESC,shoe_id', [String(r.id)]).map(s => String(s.shoe_id)),
@@ -225,7 +229,9 @@ export class AnalyzerStore {
     const pending: Pending[] = this.rows("SELECT * FROM pending WHERE status='pending' ORDER BY observed_at").map(r => ({
       ...JSON.parse(String(r.payload)), id: String(r.id), reason: String(r.reason), observedAt: String(r.observed_at),
     }));
-    return { rooms, roomId: room?.id ?? null, shoeId: selectedShoe ?? null, results, forecasts, pending, stats: statistics(results.map(r => r.outcome), forecasts, results.map(r => r.round)) };
+    const snapshot={ rooms, roomId: room?.id ?? null, shoeId: selectedShoe ?? null, results, forecasts, pending, stats: statistics(results.map(r => r.outcome), forecasts, results.map(r => r.round)) };
+    if(this.snapshotCache.size>=8)this.snapshotCache.delete(this.snapshotCache.keys().next().value!);
+    this.snapshotCache.set(cacheKey,snapshot);return structuredClone(snapshot);
   }
   csv(roomId: string, shoeId: string) {
     const snapshot = this.snapshot(roomId, shoeId);
@@ -238,5 +244,5 @@ export class AnalyzerStore {
     rows.push(...snapshot.forecasts.map(f => ['forecast', snapshot.rooms.find(r => r.id === roomId)!.name, shoeId, f.targetRound, f.actual ?? '', f.method, f.pick, f.probabilities.B, f.probabilities.P, f.probabilities.T, f.mark ?? '', f.horizon, f.cutoffRound, f.createdAt, '', '', f.sampleSize, '']));
     return '\uFEFF' + [header, ...rows].map(row => row.map(cell).join(',')).join('\r\n');
   }
-  close() { this.db.close(); }
+  close() { this.snapshotCache.clear(); this.db.close(); }
 }

@@ -51,7 +51,8 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     // Only the document scrolls vertically; the two dashboard panes do not.
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>w.getTitle()==='Baccarat Live Analyzer')!.setSize(1000,700));
     await expect(page.getByRole('button',{name:'한눈에 보기',exact:true})).toHaveAttribute('aria-pressed','true');
-    await expect.poll(()=>page.getByTestId('forecast-row-4').evaluate(el=>el.getBoundingClientRect().bottom<=window.innerHeight)).toBe(true);
+    const geometry=()=>page.getByTestId('forecast-row-4').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,height:window.innerHeight,width:window.innerWidth,scrollY:window.scrollY}));
+    await expect.poll(async()=>{const g=await geometry();return g.bottom<=g.height;},{message:JSON.stringify(await geometry())}).toBe(true);
     const layout=await page.evaluate(()=>{
       const monitor=document.querySelector('[data-testid="live-monitor"]')!.getBoundingClientRect();
       const forecast=document.querySelector('.forecast-panel')!.getBoundingClientRect();
@@ -96,7 +97,7 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     const scored=await page.evaluate(()=>window.analyzer.snapshot());expect(scored.stats.advanceAccuracy.A.count).toBe(1);expect(scored.stats.advanceAccuracy.A.rate).toBe(1);
     await expect(page.getByTestId('method-accuracy-A')).toContainText('100.00%');
     await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
-    await expect.poll(()=>page.getByTestId('forecast-row-4').evaluate(el=>el.getBoundingClientRect().bottom<=window.innerHeight)).toBe(true);
+    await expect.poll(async()=>{const g=await geometry();return g.bottom<=g.height;},{message:JSON.stringify(await geometry())}).toBe(true);
     expect(scored.forecasts.filter(f=>f.cutoffRound===22).map(f=>f.id)).toEqual(initial.forecasts.map(f=>f.id));
     expect((await page.evaluate(()=>window.analyzer.captureInfo())).capturedAt).not.toBe(before.capturedAt);
     await paint(aHistory+'BP');

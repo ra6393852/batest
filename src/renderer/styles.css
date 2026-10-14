@@ -79,6 +79,15 @@ main { flex: none; align-items: start; grid-template-columns: minmax(300px, .8fr
 .forecast-panel > .table-scroll { overflow: visible; }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-thumb { background: #526987; border: 2px solid #121d30; border-radius: 8px; }
+@media (max-height: 750px) {
+  .app.is-live { padding: 8px 12px; gap: 8px; }
+  .is-live > header .eyebrow { display: none; }
+  .is-live > header h1 { font-size: 23px; margin: 3px 0; }
+  .is-live .forecast-panel .panel-title { margin-bottom: 4px; }
+  .is-live .forecast-cutoff { margin: 4px 0; }
+  .is-live .forecast-cutoff select { padding: 6px 8px; }
+  .is-live .forecast-legend { font-size: 13px; margin: 4px 0; }
+}
 @media (max-width: 920px) {
   main { grid-template-columns: minmax(0, 1fr); }
   .left-pane, .right-pane { display: contents; }

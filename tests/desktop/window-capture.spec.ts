@@ -20,7 +20,9 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
       ctx.fillStyle='#fff';ctx.fillRect(0,0,350,80);ctx.strokeStyle='#d0d0d0';ctx.lineWidth=1;
       for(let x=3;x<=339;x+=12){ctx.beginPath();ctx.moveTo(x+.5,2);ctx.lineTo(x+.5,74);ctx.stroke();}
       for(let y=2;y<=74;y+=12){ctx.beginPath();ctx.moveTo(3,y+.5);ctx.lineTo(339,y+.5);ctx.stroke();}
-      [...outcomes].forEach((o,i)=>{const x=9.5+Math.floor(i/6)*12,y=8.5+(i%6)*12;ctx.fillStyle=o==='B'?'#f22':o==='P'?'#2785ff':'#009b5c';ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);});
+      [...outcomes].forEach((o,i)=>{const x=9.5+Math.floor(i/6)*12,y=8.5+(i%6)*12;ctx.fillStyle=o==='B'?'#f22':o==='P'?'#2785ff':'#009b5c';ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);
+        if(i%7===0){ctx.fillStyle='white';ctx.beginPath();ctx.arc(x+3,y+3,2.2,0,Math.PI*2);ctx.fill();ctx.fillStyle=o==='B'?'#2785ff':'#f22';ctx.beginPath();ctx.arc(x+3,y+3,1.6,0,Math.PI*2);ctx.fill();}
+      });
     },outcomes);
     const aHistory='BPBPBBPPTBBPPBPBBPPBPP';await paint(aHistory);
     await game.locator('#board').screenshot();
@@ -56,18 +58,22 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await page.mouse.move(header.x+290,header.y+45);await page.mouse.up();
     await expect.poll(async()=>{const moved=await windowBounds();return {x:moved.x-originalBounds.x,y:moved.y-originalBounds.y};}).toEqual({x:40,y:25});
     await paint(aHistory+'B');
-    await expect(page.getByTestId('capture-status')).toContainText('23개 결과 수집',{timeout:20000});
+    await expect(page.getByTestId('capture-status')).toContainText('23개 결과 수집',{timeout:5000});
     await expect(page.getByTestId('total-results')).toHaveText('23');
     const scored=await page.evaluate(()=>window.analyzer.snapshot());expect(scored.stats.advanceAccuracy.A.count).toBe(1);expect(scored.stats.advanceAccuracy.A.rate).toBe(1);
     await expect(page.getByTestId('method-accuracy-A')).toContainText('100.00%');
     await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
     expect(scored.forecasts.filter(f=>f.cutoffRound===22).map(f=>f.id)).toEqual(initial.forecasts.map(f=>f.id));
     expect((await page.evaluate(()=>window.analyzer.captureInfo())).capturedAt).not.toBe(before.capturedAt);
+    await paint(aHistory+'BP');
+    await expect(page.getByTestId('capture-status')).toContainText('24개 결과 수집',{timeout:5000});
+    await expect(page.getByTestId('latest-mark-A')).toHaveText('X');
+    const next=await page.evaluate(()=>window.analyzer.snapshot());expect(next.stats.accuracy.A.all.rate).toBe(.5);expect(next.stats.advanceAccuracy.A.count).toBe(3);
     const bHistory='PPPTBPBBPTB';await paint(bHistory);
     await expect(page.getByTestId('capture-status')).toContainText('그림판 2 · 11개 결과 수집',{timeout:20000});
     await expect(page.getByTestId('total-results')).toHaveText('11');
     const b=await page.evaluate(()=>window.analyzer.snapshot());expect(b.roomId).not.toBe(initial.roomId);expect(b.results.map(r=>r.outcome).join('')).toBe(bHistory);expect(b.stats.advanceComparisons).toBe(0);
-    const preserved=await page.evaluate(({room,shoe})=>window.analyzer.snapshot(room,shoe),{room:initial.roomId!,shoe:initial.shoeId!});expect(preserved.results).toHaveLength(23);
+    const preserved=await page.evaluate(({room,shoe})=>window.analyzer.snapshot(room,shoe),{room:initial.roomId!,shoe:initial.shoeId!});expect(preserved.results).toHaveLength(24);
     await page.screenshot({path:'test-results/automatic-capture.png'});
     await paint('');
     await expect(page.getByTestId('capture-status')).toContainText('빈 그림판 · 첫 결과 대기',{timeout:15000});

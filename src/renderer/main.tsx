@@ -29,7 +29,7 @@ function CapturePreview({capture}:{capture:CaptureInfo}){
   return <div className="capture-viewer"><div className="image-zoom" role="group" aria-label="자동 이미지 확대">
     <button className={zoom===1?'':'secondary'} aria-pressed={zoom===1} onClick={()=>setZoom(1)}>원본 100%</button>
     <button className={zoom===2?'':'secondary'} aria-pressed={zoom===2} onClick={()=>setZoom(2)}>2배 200%</button>
-    <span>2배 이미지로 판독 · 이미지를 잡고 드래그해 이동</span>
+    <span>승패 먼저 판독{capture.recognitionMs!==undefined?` · ${capture.recognitionMs}ms`:''} · 숫자는 별도 처리 · 이미지 드래그로 이동</span>
   </div><div className="capture-viewport" tabIndex={0} aria-label="자동 이미지 드래그 보기" data-testid="capture-viewport"
     onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();const v=e.currentTarget;v.setPointerCapture(e.pointerId);pan.current={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};}}
     onPointerMove={e=>{if(!pan.current)return;const v=e.currentTarget;v.scrollLeft=pan.current.left+pan.current.x-e.clientX;v.scrollTop=pan.current.top+pan.current.y-e.clientY;}}
@@ -129,7 +129,7 @@ function App() {
       onPointerMove={e=>{if(draggingWindow.current)window.analyzer.moveWindowDrag({x:e.screenX,y:e.screenY});}}
       onPointerUp={e=>{draggingWindow.current=false;window.analyzer.endWindowDrag();if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
       onPointerCancel={()=>{draggingWindow.current=false;window.analyzer.endWindowDrag();}}>
-      <div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.2</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+      <div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.3</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span>왼쪽 아래 그림판 · 1초 간격</span></div>
       <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 그림판이 보이게 열어 두면 됩니다. <b>방 이름은 읽지 않습니다.</b></p>
       <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>

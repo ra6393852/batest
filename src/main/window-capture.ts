@@ -4,24 +4,25 @@ import type { AnalyzerStore } from './store';
 import { VisibleBoardSession } from './visible-board-session';
 import { ScoreReader } from './score-reader';
 import { analyzeBeadBitmap, type BeadImageResult } from '../collector/bead-image';
-import { beadColorConfidence } from '../collector/frame-color';
+import { assessBeadColors } from '../collector/frame-color';
 import { digitStrip } from '../collector/digit-bitmap';
 import { createHash } from 'node:crypto';
 import { doubleBitmap } from '../collector/double-bitmap';
+import { BackgroundScores } from './background-scores';
 export class WindowCapture {
   private info:CaptureInfo={enabled:false,state:'idle',message:'Chrome에서 게임을 연 뒤 게임 창을 선택하세요.'};
   private timer?:ReturnType<typeof setInterval>;
   private sourceId?:string;
   private generation=0;
   private captureBusy=false;
-  private recognitionBusy=false;
   private session:VisibleBoardSession;
-  private lastScoreKey='';
-  private scoreCache:Array<number|null>=[];
+  private backgroundScores:BackgroundScores;
+  private scoreGroup='';
   private firstSeen=new Map<string,string>();
   constructor(store:AnalyzerStore,private scores:ScoreReader,
     private notify:(info:CaptureInfo)=>void,private changed:()=>void,private ownTitle='Baccarat Live Analyzer'){
     this.session=new VisibleBoardSession(store);
+    this.backgroundScores=new BackgroundScores(store,(w,h,b,c)=>scores.read(w,h,b,c,false),changed);
   }
   current(){return {...this.info};}
   async windows():Promise<CaptureWindow[]>{
@@ -36,13 +37,13 @@ export class WindowCapture {
     this.notify(this.current());
     this.timer=setInterval(()=>{void this.tick();},1000);void this.tick();
   }
-  stop(){if(this.timer)clearInterval(this.timer);this.timer=undefined;this.sourceId=undefined;this.generation++;this.session.pause();this.firstSeen.clear();
+  stop(){if(this.timer)clearInterval(this.timer);this.timer=undefined;this.sourceId=undefined;this.generation++;this.session.pause();this.firstSeen.clear();this.backgroundScores.reset();this.scoreGroup='';
     this.info={...this.info,enabled:false,state:'idle',message:'자동 가져오기 중지 · 기록은 보존됩니다.'};this.notify(this.current());}
-  newShoe(){this.generation++;this.session.newBoard();this.firstSeen.clear();
+  newShoe(){this.generation++;this.session.newBoard();this.firstSeen.clear();this.backgroundScores.reset();this.scoreGroup='';
     this.info={...this.info,state:'waiting',message:'새 그림판 기록 · 현재 화면을 확인 중'};this.notify(this.current());}
   private async tick(){
     if(this.captureBusy||!this.sourceId)return;
-    this.captureBusy=true;const generation=this.generation;
+    this.captureBusy=true;const generation=this.generation,started=performance.now();
     try{
       const sources=await desktopCapturer.getSources({types:['window'],thumbnailSize:{width:1920,height:1080},fetchWindowIcons:false});
       if(generation!==this.generation)return;
@@ -69,28 +70,30 @@ export class WindowCapture {
         originalPreview=original.crop({x,y,width:Math.min(native.width-x,Math.ceil((analysis.bounds.x+analysis.bounds.width)/2)-x),height:Math.min(native.height-y,Math.ceil((analysis.bounds.y+analysis.bounds.height)/2)-y)});
       }
       this.info={...this.info,preview:preview.toDataURL(),originalPreview:originalPreview.toDataURL(),recognitionScale:2,capturedAt:observedAt};this.notify(this.current());
-      // Capturing and preview continue once a second even while OCR is running.
-      if(!this.recognitionBusy){this.recognitionBusy=true;void this.recognize(crop,observedAt,generation,analysis,firstSeenAt).finally(()=>{this.recognitionBusy=false;});}
+      // The B/P/T path has no OCR await. Optional digits run in their own queue.
+      this.recognize(crop,observedAt,generation,analysis,firstSeenAt,started);
     }catch{if(generation===this.generation){this.session.pause();this.info={...this.info,state:'blocked',message:'화면 가져오기 실패 · 게임 창이 최소화되었는지 확인하세요.'};this.notify(this.current());}}
     finally{this.captureBusy=false;}
   }
-  private async recognize(crop:NativeImage,observedAt:string,generation:number,scanned?:BeadImageResult,firstSeenAt=observedAt){
+  private recognize(crop:NativeImage,observedAt:string,generation:number,scanned?:BeadImageResult,firstSeenAt=observedAt,started=performance.now()){
     try{
       const {width,height}=crop.getSize(),bitmap=crop.toBitmap();
       const analysis=scanned??analyzeBeadBitmap(width,height,bitmap,true,true);
       if(analysis.outcomes.length===0){const update=this.session.accept({outcomes:[],confidence:1,observedAt});
         this.firstSeen.clear();this.info={...this.info,...update,processedAt:new Date().toISOString()};this.notify(this.current());return;}
       if(!analysis.beadCells)throw new Error('비드로드 칸을 읽지 못했습니다.');
-      const confidence=Math.min(...beadColorConfidence(width,bitmap,analysis.beadCells,analysis.outcomes));
-      const glyphs=digitStrip(width,height,bitmap,analysis.beadCells);
-      const key=JSON.stringify([analysis.outcomes,createHash('sha256').update(glyphs.bitmap).digest('hex')]);
-      if(key!==this.lastScoreKey){
-        this.lastScoreKey=key;this.scoreCache=[];
-        try{const read=await this.scores.read(width,height,bitmap,analysis.beadCells);this.scoreCache=read.scores.map((v,i)=>read.confidences[i]>=.92?v:null);}catch{/* Scores are optional; uncertain digits never affect stored results. */}
-      }
+      const colors=assessBeadColors(width,bitmap,analysis.beadCells,analysis.outcomes);
+      const confidence=Math.min(...colors.map(c=>c.confidence)),uncertain=colors.findIndex(c=>c.confidence<.92);
       if(generation!==this.generation)return;
-      const update=this.session.accept({outcomes:analysis.outcomes,confidence,observedAt,firstSeenAt,scores:this.scoreCache});
-      this.info={...this.info,...update,processedAt:new Date().toISOString()};this.notify(this.current());if(update.changed)this.changed();
+      const update=uncertain>=0?this.session.invalid(`색 판독 대기 · ${uncertain+1}번째 원(${analysis.outcomes[uncertain]})의 색상 일치 ${Math.round(colors[uncertain].confidence*100)}% · 쌍 표시를 제외해도 본체 색이 불확실합니다.`)
+        :this.session.accept({outcomes:analysis.outcomes,confidence,observedAt,firstSeenAt});
+      this.info={...this.info,...update,processedAt:new Date().toISOString(),recognitionMs:Math.round(performance.now()-started)};this.notify(this.current());if(update.changed)this.changed();
+      if(update.state==='collecting'&&update.roomId&&update.shoeId){
+        const group=JSON.stringify([update.roomId,update.shoeId]);if(group!==this.scoreGroup){this.backgroundScores.reset();this.scoreGroup=group;}
+        const glyphs=digitStrip(width,height,bitmap,analysis.beadCells);
+        this.backgroundScores.enqueue({key:JSON.stringify([group,analysis.outcomes,createHash('sha256').update(glyphs.bitmap).digest('hex')]),roomId:update.roomId,shoeId:update.shoeId,
+          width,height,bitmap,cells:analysis.beadCells,outcomes:analysis.outcomes});
+      }
     }catch(error){if(generation===this.generation){const message=error instanceof Error?error.message:'그림판 확인 실패';
       const update=this.session.invalid(message);
       this.info={...this.info,...update,processedAt:new Date().toISOString()};this.notify(this.current());}}

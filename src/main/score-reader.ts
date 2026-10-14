@@ -6,7 +6,7 @@ import { digitStrip, type DigitCell } from '../collector/digit-bitmap';
 export class ScoreReader {
   private worker?: Promise<Worker>;
   constructor(private resources: string | null, private workerPath: string) {}
-  async read(width: number, height: number, bitmap: Uint8Array, cells: DigitCell[]) {
+  async read(width: number, height: number, bitmap: Uint8Array, cells: DigitCell[], retryUncertain=true) {
     this.worker ??= createWorker('eng', 1, {
       langPath: this.resources ? join(this.resources, 'eng') : join(process.cwd(), 'node_modules/@tesseract.js-data/eng/4.0.0'),
       corePath: this.resources ? join(this.resources, 'node_modules/tesseract.js-core') : undefined,
@@ -37,7 +37,7 @@ export class ScoreReader {
     // Retry uncertain numeric glyphs individually; never force letters or empty
     // cells into digits, and keep the same confidence requirement.
     const numericChart=glyphs>=7&&numericGlyphs/glyphs>=0.75;
-    const retry = scores.map((score,index)=>({score,index})).filter(({score,index})=>score===null&&(numericChart||confidences[index]>0)).slice(0,12);
+    const retry = retryUncertain?scores.map((score,index)=>({score,index})).filter(({score,index})=>score===null&&(numericChart||confidences[index]>0)).slice(0,12):[];
     if (retry.length) await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_CHAR, tessedit_char_whitelist:numericChart?'0123456789':'0123456789BPT' });
     for (const {index} of retry) {
       const strip=digitStrip(width,height,bitmap,[cells[index]]);

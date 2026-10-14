@@ -11,11 +11,11 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const page=await app.firstWindow();await unlockApp(page);await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer'})).toBeVisible();
-    await expect(page.getByTestId('capture-version')).toContainText('0.5.7');
+    await expect(page.getByTestId('capture-version')).toContainText('0.5.8');
     const executable=await app.evaluate(()=>process.execPath);
     const duplicate=await new Promise<{stderr:string;code:string|number}>(resolve=>execFile(executable,['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])],{timeout:10000,windowsHide:true},(error,_out,stderr)=>resolve({stderr,code:error?.code??0})));
-    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.7');expect(duplicate.stderr).toContain('이미 실행 중');
+    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.8');expect(duplicate.stderr).toContain('이미 실행 중');
     await app.evaluate(async({BrowserWindow})=>{
       const fixture=new BrowserWindow({width:900,height:650,x:0,y:0,useContentSize:true,frame:false,title:'Baccarat Capture Fixture',webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
       await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><canvas id="board" width="350" height="80" style="position:absolute;left:10px;top:550px"></canvas></body>'));
@@ -31,7 +31,7 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
         if(o==='T'){ctx.save();ctx.clip();ctx.fillStyle='#19a898';for(let offset=-4;offset<5;offset+=8)ctx.fillRect(x+offset,y-5,1,10);ctx.restore();}
         ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);
         if(i%7===0){ctx.fillStyle='white';ctx.beginPath();ctx.arc(x+3,y+3,2.2,0,Math.PI*2);ctx.fill();ctx.fillStyle=o==='B'?'#2785ff':'#f22';ctx.beginPath();ctx.arc(x+3,y+3,1.6,0,Math.PI*2);ctx.fill();}
-        if(i===0&&ambiguous){ctx.save();ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.clip();ctx.fillStyle='#f22';ctx.fillRect(x,y-6,6,12);ctx.restore();}
+        if(i===0&&ambiguous){ctx.save();ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.clip();ctx.fillStyle=o==='B'?'#2785ff':'#f22';ctx.fillRect(x,y-6,6,12);ctx.restore();}
       });
     },{outcomes,ambiguous});
     const aHistory='BPBPBBPPTBBPPBPBBPPBPP';await paint(aHistory);
@@ -106,11 +106,29 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     expect(await page.locator('.forecast-matrix tbody tr[data-round]').evaluateAll(rows=>rows.map(row=>Number((row as HTMLElement).dataset.round)))).toEqual([23,24,25,26,27,28]);
     await expect(page.getByText('최근 결과 채점 · 즉시 다음 회차 예측',{exact:true})).toHaveCount(0);
     const next=await page.evaluate(()=>window.analyzer.snapshot());expect(next.stats.accuracy.A.all.rate).toBe(.5);expect(next.stats.advanceAccuracy.A.count).toBe(3);
+    // Automatic capture changes must not scroll the document or collapse its
+    // confirmed history, including a temporary unreadable frame and recovery.
+    await page.getByRole('button',{name:'1회차부터 보기',exact:true}).click();
+    await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight-window.innerHeight-160));
+    const heldScroll=await page.evaluate(()=>window.scrollY);
+    expect(heldScroll).toBeGreaterThan(500);
+    await paint(aHistory+'BPT',true);
+    await expect(page.getByTestId('capture-status')).toContainText('1번째 원',{timeout:5000});
+    await expect(page.getByTestId('history-round-12')).toHaveCount(1);
+    await expect(page.getByTestId('forecast-read-state')).toContainText('저장된 이전 확정 기록');
+    await expect(page.getByTestId('forecast-A-1')).toHaveCount(0);
+    expect(await page.evaluate(()=>window.scrollY)).toBe(heldScroll);
+    await paint(aHistory+'BPT');
+    await expect(page.getByTestId('capture-status')).toContainText('25개 결과 수집',{timeout:5000});
+    await expect(page.getByTestId('history-round-25')).toHaveCount(1);
+    expect(await page.evaluate(()=>window.scrollY)).toBe(heldScroll);
+    await page.getByRole('button',{name:'실시간 보기',exact:true}).click();
+    await page.evaluate(()=>window.scrollTo(0,0));
     const bHistory='PPPTBPBBPTB';await paint(bHistory);
     await expect(page.getByTestId('capture-status')).toContainText('그림판 2 · 11개 결과 수집',{timeout:20000});
     await expect(page.getByTestId('total-results')).toHaveText('11');
     const b=await page.evaluate(()=>window.analyzer.snapshot());expect(b.roomId).not.toBe(initial.roomId);expect(b.results.map(r=>r.outcome).join('')).toBe(bHistory);expect(b.stats.advanceComparisons).toBe(0);
-    const preserved=await page.evaluate(({room,shoe})=>window.analyzer.snapshot(room,shoe),{room:initial.roomId!,shoe:initial.shoeId!});expect(preserved.results).toHaveLength(24);
+    const preserved=await page.evaluate(({room,shoe})=>window.analyzer.snapshot(room,shoe),{room:initial.roomId!,shoe:initial.shoeId!});expect(preserved.results).toHaveLength(25);
     await page.screenshot({path:'test-results/automatic-capture.png'});
     await paint('');
     await expect(page.getByTestId('capture-status')).toContainText('빈 그림판 · 첫 결과 대기',{timeout:15000});

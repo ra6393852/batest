@@ -26,7 +26,7 @@ nav{flex-wrap:wrap}.status{flex:1;min-width:180px}
 .capture-preview .capture-viewport img { max-width: none; max-height: none; width: auto; height: auto; display: block; margin: 0; border: 0; }
 
 /* One page scroll: the monitoring image and predictions share the first row. */
-.app { height: auto; min-height: 100vh; padding: 12px 18px; gap: 12px; }
+.app { height: auto; min-height: 100vh; padding: 12px 18px; gap: 12px; overflow-anchor: none; }
 main { flex: none; align-items: start; grid-template-columns: minmax(300px, .8fr) minmax(540px, 1.5fr); gap: 16px; }
 .left-pane, .right-pane { overflow: visible; padding-right: 0; gap: 16px; }
 .is-live .left-pane { position: sticky; top: 12px; align-self: start; }
@@ -49,8 +49,11 @@ main { flex: none; align-items: start; grid-template-columns: minmax(300px, .8fr
 .capture-help summary, .forecast-help summary { cursor: pointer; padding: 4px 0; }
 .capture-help p { margin: 8px 0; }
 .forecast-panel { padding: 12px; min-width: 0; }
-.forecast-panel .panel-title { flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.forecast-panel .panel-title { flex-wrap: nowrap; gap: 6px; margin-bottom: 8px; }
+.forecast-panel .panel-title h2 { white-space: nowrap; }
+.forecast-panel .panel-title span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .forecast-cutoff { margin: 6px 0; }
+.cutoff-placeholder { min-height: 38px; min-width: 264px; display: inline-flex; align-items: center; padding: 8px; color: #91a4c2; }
 .forecast-legend { margin: 6px 0; line-height: 1.4; }
 .forecast-state-note { color: #ffdb8a; line-height: 1.5; margin: 8px 0; }
 .history-view-controls { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
@@ -86,6 +89,7 @@ main { flex: none; align-items: start; grid-template-columns: minmax(300px, .8fr
   .is-live .forecast-panel .panel-title { margin-bottom: 4px; }
   .is-live .forecast-cutoff { margin: 4px 0; }
   .is-live .forecast-cutoff select { padding: 6px 8px; }
+  .is-live .cutoff-placeholder { min-height: 34px; padding: 6px 8px; }
   .is-live .forecast-legend { font-size: 13px; margin: 4px 0; }
 }
 @media (max-width: 920px) {

@@ -1,6 +1,6 @@
 # Baccarat Live Analyzer
 
-Windows 10/11용 읽기 전용 바카라 통계 프로그램입니다. `ra6393852/batest`에서 Electron/React/TypeScript와 SQLite로 개발합니다. **0.5.7은 시작 관리자 암호, 1회차부터의 과거 검증, 반복 통계·이미지 전달 최적화를 추가합니다.** 숫자 그림장은 색으로 승패, 숫자로 표시 점수를 읽습니다.
+Windows 10/11용 읽기 전용 바카라 통계 프로그램입니다. `ra6393852/batest`에서 Electron/React/TypeScript와 SQLite로 개발합니다. **0.5.8은 새 회차 확인과 판독 대기 전환 중 기록표가 접혀 스크롤이 이동하던 문제를 수정합니다.** 숫자 그림장은 색으로 승패, 숫자로 표시 점수를 읽습니다.
 
 ## 한눈에 보는 실시간 화면
 
@@ -105,8 +105,14 @@ npm run test:desktop
 npm run dist:win
 ```
 
-생성 파일: `release/Baccarat-Live-Analyzer-0.5.7-x64-Portable.zip`. [Windows CI](.github/workflows/windows.yml)는 소스 테스트 → ZIP 빌드 → 압축 해제한 실제 EXE 테스트 후 폴더 전체를 `baccarat-windows-x64-portable`로 제공합니다. 설치 파일·실행 프로토콜 자동 등록은 포함하지 않습니다.
+생성 파일: `release/Baccarat-Live-Analyzer-0.5.8-x64-Portable.zip`. [Windows CI](.github/workflows/windows.yml)는 소스 테스트 → ZIP 빌드 → 압축 해제한 실제 EXE 테스트 후 폴더 전체를 `baccarat-windows-x64-portable`로 제공합니다. 설치 파일·실행 프로토콜 자동 등록은 포함하지 않습니다.
 
 Linux 검증: `bash scripts/test-cloud.sh`. [개발 환경 안내](docs/cloud.md)와 [검증 기록](docs/validation.md)를 참고하세요. 실제 사이트 로그인/제공자 보호 화면은 미검증이며 테스트 자료의 적중률을 실제 예측 성능으로 표현하지 않습니다.
 
 자동 베팅·베팅 클릭/금액 입력·비밀번호 수집·민감한 세션 로그·보안 정책 우회 기능을 구현하지 않습니다. 기존 Chrome 연결 모듈은 개발용 `--enable-chrome-bridge` 실행에만 사용하며 일반 사용에는 필요 없습니다.
+
+## 자동 갱신 중 스크롤 유지
+
+확인된 과거 행과 표의 자리는 판독 대기에도 유지합니다. 대기 중 과거 행은 저장된 이전 기록임을 표시하고, 현재 화면이 확인되지 않은 미래 예상 답은 표시하지 않습니다. 기준 선택 영역·보기 버튼·선택 묶음·추정치 영역도 갑자기 접히지 않도록 유지합니다. 새 행 추가에 따른 브라우저의 자동 스크롤 보정을 끄며 사용자의 스크롤과 이미지 드래그는 계속 동작합니다.
+
+월 단위 판매와 수천 개 코드 관리에 대한 추천 설계는 [라이선스 설계안](docs/licensing-plan.md)에 정리했습니다. 이번 버전에는 판매용 라이선스 서버를 구현하거나 배포하지 않았습니다.

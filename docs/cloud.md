@@ -9,7 +9,7 @@ bash scripts/test-cloud.sh
 
 Node.js 24, 고정 lockfile의 npm ci, 공식 체크섬/TLS를 유지하는 Electron 다운로드와 TypeScript/React 빌드를 사용합니다. 캐시는 `/workspace/.cache`입니다. 정상 의존성은 불필요하게 재설치하지 않습니다. setup 스크립트는 필요한 경우 서명된 Debian trixie Xvfb 패키지를 캐시 안에 풀며 시스템 경로를 수정하지 않습니다.
 
-0.5.7 검증은 단위111개와 Linux Electron9개 대상입니다. 실제 OS 클립보드, 숫자 판독/미확인 점수 수정, 4회차 고정 예측/O/X, SQLite v1→v2 이관 및 보존, 원본 확대를 검사합니다. 게임 창의 native desktopCapturer로 방 이름/회차 텍스트가 없는 작은 숫자 그림판을 2배 판독하고 쌍 표시가 있는22→23→24개 결과를 각각5초 이내 저장/채점, 다른 그림판의 새 기록 분리, 빈 그림판 초기화, 100%/200% 미리보기 및 이미지/창 드래그를 검사합니다. 캡처 fixture는 로컬 BrowserWindow이며 실제 Evolution 화면이 아닙니다. Windows CI는 Chrome 확장 내부 테스트를 포함해 소스와 무설치 EXE에서 각각10개를 실행합니다.
+0.5.8 검증은 단위111개와 Linux Electron9개 대상입니다. 실제 OS 클립보드, 숫자 판독/미확인 점수 수정, 4회차 고정 예측/O/X, SQLite v1→v2 이관 및 보존, 원본 확대를 검사합니다. 게임 창의 native desktopCapturer로 방 이름/회차 텍스트가 없는 작은 숫자 그림판을 2배 판독하고 쌍 표시가 있는22→23→24개 결과를 각각5초 이내 저장/채점, 다른 그림판의 새 기록 분리, 빈 그림판 초기화, 100%/200% 미리보기 및 이미지/창 드래그를 검사합니다. 캡처 fixture는 로컬 BrowserWindow이며 실제 Evolution 화면이 아닙니다. Windows CI는 Chrome 확장 내부 테스트를 포함해 소스와 무설치 EXE에서 각각10개를 실행합니다.
 
 창 열거/캡처 검사에는 Xvfb와 X11 창 관리자 xfwm4, dbus-run-session을 사용합니다. 이 환경에는 xfwm4/dbus가 준비되어 있습니다. 테스트 스크립트는 별도 DISPLAY와 DBus 세션을 시작·종료하고 설정 파일을 `/workspace/.cache/baccarat-test-config`에 둡니다. 사용자 HOME을 변경하지 않습니다. 다른 Linux 이미지에서는 이 런타임이 있는지 확인하세요. 프로세스는 환경 스냅샷에 남지 않습니다.
 
@@ -17,7 +17,7 @@ Node.js 24, 고정 lockfile의 npm ci, 공식 체크섬/TLS를 유지하는 Elec
 
 기본 사용은 Chrome에서 직접 게임 실행 → 게임 창 선택 → 자동 가져오기 시작입니다. 1초마다 선택한 창의 왼쪽 아래 이미지를 PC 안에서 가져오고 OCR은 별도로 순차 처리합니다. 기본 Chrome 연결 서버/확장 설치는 필요 없습니다. 기존 연결 모듈은 --enable-chrome-bridge 개발 실행에만 사용합니다. 시스템 Chromium 확장 시작/다운로드 제약 때문에 Chrome 확장 통합 테스트는 Windows CI에서 실행하며 Linux 통과로 보고하지 않습니다.
 
-배포는 Windows 무설치 ZIP 전체입니다. EXE와 resources를 함께 유지하고 기존 userData SQLite를 보존합니다. 설치 파일·프로토콜 자동 등록을 포함하지 않습니다. npm run dist:win은 release/Baccarat-Live-Analyzer-0.5.7-x64-Portable.zip을 만들며 CI가 압축 해제한 실제 EXE를 테스트한 뒤 폴더 전체를 아티팩트로 제공합니다.
+배포는 Windows 무설치 ZIP 전체입니다. EXE와 resources를 함께 유지하고 기존 userData SQLite를 보존합니다. 설치 파일·프로토콜 자동 등록을 포함하지 않습니다. npm run dist:win은 release/Baccarat-Live-Analyzer-0.5.8-x64-Portable.zip을 만들며 CI가 압축 해제한 실제 EXE를 테스트한 뒤 폴더 전체를 아티팩트로 제공합니다.
 
 자동 캡처는 제공된 Evolution 배치 기준의 창 왼쪽42%/아래45%입니다. 방 이름/전체 결과 수는 읽지 않습니다. 캡처 BGRA 픽셀을 정확히 2배 복제하여 판독하고 그림판 부분만 원본/2배 PNG로 미리보기 합니다. 이미지·민감한 세션 정보는 저장/로그하지 않으며 숫자 OCR은 PC 내 영문 모델을 사용합니다. 기록 번호는 보이는 그림판의 상대 순서이며 전체 슈 복원이 아닙니다. 그림판 변경은 새 그룹으로 분리하되, 서로 다른 방의 동일한 그림판은 새 그림판 기록 버튼으로 구분합니다. 화면 보호/최소화/다른 배치와 실제 사이트 판독은 미검증입니다. 자동 베팅·접근 정책 우회 기능은 없습니다.
 
@@ -32,3 +32,5 @@ Node.js 24, 고정 lockfile의 npm ci, 공식 체크섬/TLS를 유지하는 Elec
 0.5.7은 시작 암호와 과거 검증을 추가합니다. access-helper.ts가 임시 fixture 암호를 만들고 기존 데스크톱 검사도 실제 로그인 후 실행합니다. --smoke-test는 os.tmpdir 아래 실제 baccarat- 경로만 사용하며 일반 프로필과 시작 암호를 우회하지 않습니다. access.spec.ts는 잠금 전 주요 IPC 거절·잘못된 암호·정상 해제·재실행 재잠금을 검사합니다. 원래 관리자 암호를 코드·CI·로그·환경 설정 초안에 넣지 않습니다.
 
 history-review.ts는 각 회차의 결과와 점수를 가리고 앞선 연속 구간으로만 과거 검증합니다. 실시간 settlements와 별개이며 1회차는 이론 기준입니다. store.ts의 변경 시 무효화 캐시와 외부 수정 격리, capture-updates.ts의 변하지 않은 PNG 생략도 검사합니다. native 캡처 화면 배치 검사는 실시간 보기에서 수행하고, 클립보드 검사는 1회차부터30회차까지의 단일 표·과거 검증 표시·실시간 적중률 불변을 검사합니다.
+
+0.5.8은 판독 대기 시 과거 행 유지, 기준/보기/묶음/추정치 공간 유지, 브라우저 스크롤 앵커 보정 해제입니다. native 캡처 검사는 24회까지 저장한 뒤 전체 보기를 스크롤하고, 25번째 결과의 색 충돌 보류와 정상 25회 복귀 때 페이지 scrollY가 정확히 유지되는지 확인합니다. 대기 중 과거 행은 남고 미래 예상 답은 없어야 합니다. 첫 원이 B여도 반대색을 칠하도록 모호한 fixture도 바로잡았습니다. 테스트 추가에 따라 이전 방 보존 결과는 25개입니다. 판매 라이선스는 문서 설계만 있으며 서버/실제 코드 발급은 미구현입니다.

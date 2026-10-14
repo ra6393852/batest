@@ -12,6 +12,7 @@ import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
 import { ScoreReader } from './score-reader';
 import { WindowCapture } from './window-capture';
+import {BoardReader} from './board-reader';
 import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
@@ -120,7 +121,8 @@ void app.whenReady().then(async () => {
   window.webContents.on('will-navigate', event => event.preventDefault());
   const ocrResources=app.isPackaged?join(process.resourcesPath,'ocr'):null;
   const workerFile=ocrResources?join(ocrResources,'worker.cjs'):join(__dirname,'ocr-worker.cjs');
-  windowCapture=new WindowCapture(store,new ScoreReader(ocrResources,workerFile),
+  const boardWorker=app.isPackaged?join(process.resourcesPath,'analysis','board-worker.cjs'):join(__dirname,'board-worker.cjs');
+  windowCapture=new WindowCapture(store,new ScoreReader(ocrResources,workerFile),new BoardReader(boardWorker),
     info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',info);},changed);
   ipcMain.handle('capture:windows',async event=>{local(event);return windowCapture!.windows();});
   ipcMain.handle('capture:start',async(event,id)=>{local(event);await windowCapture!.start(z.string().regex(/^window:\d+:\d+$/).parse(id));});

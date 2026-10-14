@@ -10,11 +10,11 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const page=await app.firstWindow();await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer'})).toBeVisible();
-    await expect(page.getByTestId('capture-version')).toContainText('0.5.4');
+    await expect(page.getByTestId('capture-version')).toContainText('0.5.5');
     const executable=await app.evaluate(()=>process.execPath);
     const duplicate=await new Promise<{stderr:string;code:string|number}>(resolve=>execFile(executable,['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])],{timeout:10000,windowsHide:true},(error,_out,stderr)=>resolve({stderr,code:error?.code??0})));
-    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.4');expect(duplicate.stderr).toContain('이미 실행 중');
+    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.5');expect(duplicate.stderr).toContain('이미 실행 중');
     await app.evaluate(async({BrowserWindow})=>{
       const fixture=new BrowserWindow({width:900,height:650,x:0,y:0,useContentSize:true,frame:false,title:'Baccarat Capture Fixture',webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
       await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><canvas id="board" width="350" height="80" style="position:absolute;left:10px;top:550px"></canvas></body>'));
@@ -26,7 +26,9 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
       ctx.fillStyle='#fff';ctx.fillRect(0,0,350,80);ctx.strokeStyle='#d0d0d0';ctx.lineWidth=1;
       for(let x=3;x<=339;x+=12){ctx.beginPath();ctx.moveTo(x+.5,2);ctx.lineTo(x+.5,74);ctx.stroke();}
       for(let y=2;y<=74;y+=12){ctx.beginPath();ctx.moveTo(3,y+.5);ctx.lineTo(339,y+.5);ctx.stroke();}
-      [...outcomes].forEach((o,i)=>{const x=9.5+Math.floor(i/6)*12,y=8.5+(i%6)*12;ctx.fillStyle=o==='B'?'#f22':o==='P'?'#2785ff':'#009b5c';ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);
+      [...outcomes].forEach((o,i)=>{const x=9.5+Math.floor(i/6)*12,y=8.5+(i%6)*12;ctx.fillStyle=o==='B'?'#f22':o==='P'?'#2785ff':'#009b5c';ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.fill();
+        if(o==='T'){ctx.save();ctx.clip();ctx.fillStyle='#19a898';for(let offset=-4;offset<5;offset+=8)ctx.fillRect(x+offset,y-5,1,10);ctx.restore();}
+        ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);
         if(i%7===0){ctx.fillStyle='white';ctx.beginPath();ctx.arc(x+3,y+3,2.2,0,Math.PI*2);ctx.fill();ctx.fillStyle=o==='B'?'#2785ff':'#f22';ctx.beginPath();ctx.arc(x+3,y+3,1.6,0,Math.PI*2);ctx.fill();}
         if(i===0&&ambiguous){ctx.save();ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.clip();ctx.fillStyle='#f22';ctx.fillRect(x,y-6,6,12);ctx.restore();}
       });
@@ -41,10 +43,12 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await expect(page.getByTestId('capture-status')).toContainText('22개 결과 수집',{timeout:25000});
     await expect(page.getByTestId('total-results')).toHaveText('22');
     await expect(page.getByTestId('forecast-basis-title')).toHaveText('22회차 기준 · 23~26회차');
+    await expect(page.getByTestId('capture-preview')).toBeVisible();
+    await expect.poll(async()=>(await page.evaluate(()=>window.analyzer.captureInfo())).reusedFrame).toBe(true);
+    expect((await page.evaluate(()=>window.analyzer.captureInfo())).scannedPixels).toBe(0);
     const initial=await page.evaluate(()=>window.analyzer.snapshot());expect(initial.results.every(r=>r.historical)).toBe(true);
     const before=await page.evaluate(()=>window.analyzer.captureInfo());
     expect(before.recognitionScale).toBe(2);
-    await page.locator('.capture-preview').evaluate(el=>{(el as HTMLDetailsElement).open=true;});
     const preview=page.getByTestId('capture-preview');
     await page.getByRole('button',{name:'원본 100%',exact:true}).click();
     await expect.poll(()=>preview.evaluate(el=>(el as HTMLImageElement).complete)).toBe(true);
@@ -67,6 +71,7 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await expect.poll(async()=>{const moved=await windowBounds();return {x:moved.x-originalBounds.x,y:moved.y-originalBounds.y};}).toEqual({x:40,y:25});
     await paint(aHistory+'B');
     await expect(page.getByTestId('capture-status')).toContainText('23개 결과 수집',{timeout:5000});
+    await expect(page.getByTestId('capture-preview')).toBeVisible();
     await expect(page.getByTestId('total-results')).toHaveText('23');
     const scored=await page.evaluate(()=>window.analyzer.snapshot());expect(scored.stats.advanceAccuracy.A.count).toBe(1);expect(scored.stats.advanceAccuracy.A.rate).toBe(1);
     await expect(page.getByTestId('method-accuracy-A')).toContainText('100.00%');
@@ -94,6 +99,7 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     const latestHistory='PBPPPTPPBPPPPPBBPTBPBBBBPBBPBTBBP';expect(latestHistory).toHaveLength(33);
     await paint(latestHistory,true);
     await expect(page.getByTestId('capture-status')).toContainText('1번째 원',{timeout:5000});
+    await expect(page.getByTestId('capture-preview')).toBeVisible();
     await expect(page.getByTestId('capture-count')).toContainText('현재 화면 33개 원 후보');
     await expect(page.getByTestId('forecast-basis-title')).toHaveText('현재 그림판 확인 중 · 예측 기준 갱신 대기');
     await expect(page.getByLabel('예측 기준 회차')).toBeHidden();
@@ -101,9 +107,15 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await expect(page.getByTestId('capture-status')).toContainText('33개 결과 수집',{timeout:5000});
     await expect(page.getByTestId('total-results')).toHaveText('33');
     await expect(page.getByTestId('forecast-basis-title')).toHaveText('33회차 기준 · 34~37회차');
+    await expect(page.getByTestId('capture-preview')).toBeVisible();
     await paint(latestHistory+'B');
     await expect(page.getByTestId('forecast-basis-title')).toHaveText('34회차 기준 · 35~38회차',{timeout:5000});
     await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
+    const monitorBefore=await page.evaluate(()=>window.analyzer.captureInfo());
+    await page.getByRole('button',{name:'새 그림판 기록',exact:true}).click();
+    await expect(page.getByTestId('capture-preview')).toBeVisible();
+    await expect.poll(async()=>(await page.evaluate(()=>window.analyzer.captureInfo())).shoeId).not.toBe(monitorBefore.shoeId);
+    await expect(page.getByTestId('capture-status')).toContainText('34개 결과 수집');
     await page.getByRole('button',{name:'자동 가져오기 중지',exact:true}).click();expect((await page.evaluate(()=>window.analyzer.captureInfo())).enabled).toBe(false);
   }catch(error){
     if(app){const page=await app.firstWindow();mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/native-capture-failure.png'}).catch(()=>{});

@@ -1,5 +1,6 @@
 import type { Outcome } from '../shared/types';
 import type { DigitCell } from './digit-bitmap';
+import {beadInk} from './ink-color';
 
 // Ink agreement is a spatial check, not an OCR probability. White digits are
 // excluded. Small, separate opposite-color corner components are pair dots;
@@ -16,7 +17,7 @@ export function assessBeadColors(width: number, bitmap: Uint8Array, cells: Digit
       if ((x-cx)**2+(y-cy)**2 > radius**2) continue;
       const p = (y*width+x)*4, b=bitmap[p],g=bitmap[p+1],r=bitmap[p+2];
       if(bitmap[p+3]<160)continue;
-      const color=r>=140&&r>g*1.35&&r>b*1.35?1:b>=140&&b>r*1.3&&b>=g*.9?2:g>=100&&g>r*1.25&&g>b*1.15?3:0;
+      const color=beadInk(b,g,r,bitmap[p+3]);
       colors[(y-top)*w+x-left]=color;if(color)counts[names[color-1]]++;
     }
     let ignoredMarkerPixels=0;

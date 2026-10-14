@@ -5,6 +5,7 @@ await build({
   entryPoints: ['src/main/index.ts'], bundle: true, platform: 'node', format: 'cjs',
   target: 'node22', outfile: 'dist/main/index.cjs', external: ['electron', 'sql.js', 'tesseract.js'],
 });
+await build({entryPoints:['src/main/board-worker.ts'],bundle:true,platform:'node',format:'cjs',target:'node22',outfile:'dist/main/board-worker.cjs'});
 await build({
   entryPoints: { dashboard: 'src/preload/dashboard.ts', collector: 'src/preload/collector.ts' },
   bundle: true, platform: 'node', format: 'cjs', target: 'node22', outdir: 'dist/preload',

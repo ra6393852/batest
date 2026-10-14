@@ -1,6 +1,7 @@
 import type { Outcome, RecognitionDiagnostics } from '../shared/types';
 import { findRoadGrids, readBeadGrid, readBigRoadGrid } from './road-grid';
 import { findCircleRoads } from './circle-road';
+import {beadInk} from './ink-color';
 export class ImageRecognitionError extends Error {
   constructor(message: string, readonly diagnostics: RecognitionDiagnostics) { super(message); }
 }
@@ -18,15 +19,13 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   const pixels = width * height;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || pixels > 12_000_000 || bitmap.length !== pixels * 4)
     throw new Error('이미지는 최대 1,200만 픽셀까지 읽을 수 있습니다.');
-  const colors = new Uint8Array(pixels), visited = new Uint8Array(pixels), queue = new Int32Array(pixels);
+  const colors = new Uint8Array(pixels);
   const diagnostics: RecognitionDiagnostics = { width, height, coloredPixels: 0, gridCandidates: 0, circleCandidates: 0, circleGrids: 0, stage: 'color', detail: '' };
   const fail = (message: string, stage: RecognitionDiagnostics['stage']): never => { throw new ImageRecognitionError(message, { ...diagnostics, stage, detail: message }); };
   for (let p = 0; p < pixels; p++) {
     const b = bitmap[p * 4], g = bitmap[p * 4 + 1], r = bitmap[p * 4 + 2];
     if (bitmap[p * 4 + 3] < 160) continue;
-    if (r >= 140 && r > g * 1.35 && r > b * 1.35) colors[p] = 1;
-    else if (b >= 140 && b > r * 1.3 && b >= g * 0.9) colors[p] = 2;
-    else if (g >= 100 && g > r * 1.25 && g > b * 1.15) colors[p] = 3;
+    colors[p]=beadInk(b,g,r,bitmap[p*4+3]);
     if (colors[p]) diagnostics.coloredPixels++;
   }
   const grids = findRoadGrids(width, height, bitmap, colors);
@@ -71,6 +70,7 @@ export function analyzeBeadBitmap(width: number, height: number, bitmap: Uint8Ar
   }
   if (grids.some(grid => grid.cells.flat().filter(cell => cell.outcome !== null).length >= 7))
     fail('격자는 찾았지만 일부 결과 또는 순서가 불확실합니다. 누락 방지를 위해 저장하지 않았습니다.', 'order');
+  const visited=new Uint8Array(pixels),queue=new Int32Array(pixels);
   const dots: Dot[] = [], outcomes: Outcome[] = ['B', 'P', 'T'];
   for (let start = 0; start < pixels; start++) {
     if (!colors[start] || visited[start]) continue;

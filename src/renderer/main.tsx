@@ -29,7 +29,7 @@ function CapturePreview({capture}:{capture:CaptureInfo}){
   return <div className="capture-viewer"><div className="image-zoom" role="group" aria-label="자동 이미지 확대">
     <button className={zoom===1?'':'secondary'} aria-pressed={zoom===1} onClick={()=>setZoom(1)}>원본 100%</button>
     <button className={zoom===2?'':'secondary'} aria-pressed={zoom===2} onClick={()=>setZoom(2)}>2배 200%</button>
-    <span>승패 먼저 판독{capture.recognitionMs!==undefined?` · ${capture.recognitionMs}ms`:''} · 숫자는 별도 처리 · 이미지 드래그로 이동</span>
+    <span>승패 판독{capture.analysisMs!==undefined?` ${capture.analysisMs<1?'<1':capture.analysisMs}ms`:''}{capture.recognitionMs!==undefined?` · 캡처 포함 ${capture.recognitionMs}ms`:''} · 숫자는 점수로 별도 기록 · 이미지 드래그로 이동</span>
   </div><div className="capture-viewport" tabIndex={0} aria-label="자동 이미지 드래그 보기" data-testid="capture-viewport"
     onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();const v=e.currentTarget;v.setPointerCapture(e.pointerId);pan.current={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};}}
     onPointerMove={e=>{if(!pan.current)return;const v=e.currentTarget;v.scrollLeft=pan.current.left+pan.current.x-e.clientX;v.scrollTop=pan.current.top+pan.current.y-e.clientY;}}
@@ -138,7 +138,7 @@ function App() {
       </div>
       <p role="status" data-testid="capture-status">{capture?.message??'게임 창 선택 대기'}</p>
       {capture?.enabled&&capture.detectedResults!==undefined&&<p data-testid="capture-count" className="note">현재 화면 {capture.detectedResults}개 원 후보 · {captureWaiting?'확정 대기 · 이전 저장 기록은 현재 예측 기준으로 표시하지 않습니다.':`${capture.rounds??0}개 저장 확인`}</p>}
-      {capture?.preview&&<details open={capture.state!=='collecting'} className="capture-preview"><summary>자동으로 가져온 이미지 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</summary><CapturePreview capture={capture}/></details>}
+      {capture?.preview&&<div className="capture-preview" data-testid="live-monitor"><div>실시간 그림판 모니터 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</div><CapturePreview capture={capture}/></div>}
       <p className="note">이미지는 PC에서만 처리합니다. 보이는 그림판을 2배로 확대해 두 번 확인한 뒤 저장합니다. 표시 번호는 보이는 결과의 순서입니다. 그림판 내용이 바뀌면 별도 기록으로 시작하며, 같은 내용의 다른 게임은 새 그림판 기록을 누르세요.</p>
     </section>
     {!capture?.enabled&&<div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">

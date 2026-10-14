@@ -149,7 +149,7 @@ function App() {
             const row=historyByRound.get(round)!;
             const live=pastForecasts.has(`${round}:A`);
             return <tr key={`past:${round}`} className={live?(round===latestScoredRound?'latest-scored':'scored-round'):'retrospective-row'} data-testid={`history-round-${round}`} data-round={round}>
-              <th>{round}<small>실제 {row.actual}</small><small className="record-kind">{live?'사전 예측':'과거 검증'}</small></th>{methods.flatMap(method=>{
+              <th>{round}<small>실제 {row.actual}</small>{!live&&<small className="record-kind">과거 검증</small>}</th>{methods.flatMap(method=>{
                 const f=pastForecasts.get(`${round}:${method}`),model=row.models.find(m=>m.method===method)!;
                 const pick=f?.pick??model.pick,mark=f?.mark??model.mark;
                 return [<td key={`${method}:past-pick`} className={pick} title={f?`${f.cutoffRound}회차 기준 · ${f.horizon}회차 앞 · ${f.basis}`:`과거 검증 · 앞선 ${row.priorCount}개 결과만 사용 · ${model.basis}`}><strong>{pick}</strong></td>,

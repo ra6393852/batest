@@ -1,4 +1,4 @@
-import { desktopCapturer, nativeImage, type NativeImage } from 'electron';
+import { app, desktopCapturer, nativeImage, type NativeImage } from 'electron';
 import type { CaptureInfo, CaptureWindow } from '../shared/types';
 import type { AnalyzerStore } from './store';
 import { VisibleBoardSession } from './visible-board-session';
@@ -24,7 +24,7 @@ export class WindowCapture {
     this.session=new VisibleBoardSession(store);
     this.backgroundScores=new BackgroundScores(store,(w,h,b,c)=>scores.read(w,h,b,c,false),changed);
   }
-  current(){return {...this.info};}
+  current(){return {...this.info,appVersion:app.getVersion()};}
   async windows():Promise<CaptureWindow[]>{
     const sources=await desktopCapturer.getSources({types:['window'],thumbnailSize:{width:0,height:0},fetchWindowIcons:false});
     return sources.filter(s=>s.name!==this.ownTitle).map(s=>({id:s.id,name:s.name}));
@@ -49,7 +49,7 @@ export class WindowCapture {
       if(generation!==this.generation)return;
       const source=sources.find(s=>s.id===this.sourceId);
       if(!source||source.thumbnail.isEmpty()){
-        this.session.pause();this.info={...this.info,state:'blocked',message:'게임 창이 닫혔거나 화면을 가져올 수 없습니다. 창을 다시 선택하세요.'};this.notify(this.current());return;
+        this.session.pause();this.info={...this.info,detectedResults:undefined,state:'blocked',message:'게임 창이 닫혔거나 화면을 가져올 수 없습니다. 창을 다시 선택하세요.'};this.notify(this.current());return;
       }
       const image=source.thumbnail, {width,height}=image.getSize();
       const original=image.crop({x:0,y:Math.floor(height*.55),width:Math.max(1,Math.floor(width*.42)),height:height-Math.floor(height*.55)});
@@ -69,10 +69,10 @@ export class WindowCapture {
         const x=Math.floor(analysis.bounds.x/2),y=Math.floor(analysis.bounds.y/2);
         originalPreview=original.crop({x,y,width:Math.min(native.width-x,Math.ceil((analysis.bounds.x+analysis.bounds.width)/2)-x),height:Math.min(native.height-y,Math.ceil((analysis.bounds.y+analysis.bounds.height)/2)-y)});
       }
-      this.info={...this.info,preview:preview.toDataURL(),originalPreview:originalPreview.toDataURL(),recognitionScale:2,capturedAt:observedAt};this.notify(this.current());
+      this.info={...this.info,preview:preview.toDataURL(),originalPreview:originalPreview.toDataURL(),recognitionScale:2,detectedResults:analysis?.outcomes.length,capturedAt:observedAt};this.notify(this.current());
       // The B/P/T path has no OCR await. Optional digits run in their own queue.
       this.recognize(crop,observedAt,generation,analysis,firstSeenAt,started);
-    }catch{if(generation===this.generation){this.session.pause();this.info={...this.info,state:'blocked',message:'화면 가져오기 실패 · 게임 창이 최소화되었는지 확인하세요.'};this.notify(this.current());}}
+    }catch{if(generation===this.generation){this.session.pause();this.info={...this.info,detectedResults:undefined,state:'blocked',message:'화면 가져오기 실패 · 게임 창이 최소화되었는지 확인하세요.'};this.notify(this.current());}}
     finally{this.captureBusy=false;}
   }
   private recognize(crop:NativeImage,observedAt:string,generation:number,scanned?:BeadImageResult,firstSeenAt=observedAt,started=performance.now()){

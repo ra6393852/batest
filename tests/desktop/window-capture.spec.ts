@@ -2,6 +2,7 @@ import { _electron as electron,test,expect,type ElectronApplication } from '@pla
 import { mkdtempSync,rmSync,writeFileSync,mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {execFile} from 'node:child_process';
 test('board-only native capture uses 2x pixels without room/counter text, supports dragging and preserves O/X',async()=>{
   test.setTimeout(90000);
   const folder=mkdtempSync(join(tmpdir(),'baccarat-capture-'));let app:ElectronApplication|undefined;
@@ -9,21 +10,27 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const page=await app.firstWindow();await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer'})).toBeVisible();
+    await expect(page.getByTestId('capture-version')).toContainText('0.5.4');
+    const executable=await app.evaluate(()=>process.execPath);
+    const duplicate=await new Promise<{stderr:string;code:string|number}>(resolve=>execFile(executable,['.','--smoke-test',`--test-data=${folder}`,
+      ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])],{timeout:10000,windowsHide:true},(error,_out,stderr)=>resolve({stderr,code:error?.code??0})));
+    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.4');expect(duplicate.stderr).toContain('이미 실행 중');
     await app.evaluate(async({BrowserWindow})=>{
       const fixture=new BrowserWindow({width:900,height:650,x:0,y:0,useContentSize:true,frame:false,title:'Baccarat Capture Fixture',webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
       await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><canvas id="board" width="350" height="80" style="position:absolute;left:10px;top:550px"></canvas></body>'));
     });
     await expect.poll(()=>app!.windows().some(p=>p.url().startsWith('data:text/html'))).toBe(true);
     const game=app.windows().find(p=>p.url().startsWith('data:text/html'))!;
-    const paint=async(outcomes:string)=>game.evaluate(outcomes=>{
+    const paint=async(outcomes:string,ambiguous=false)=>game.evaluate(({outcomes,ambiguous})=>{
       const canvas=document.getElementById('board') as HTMLCanvasElement,ctx=canvas.getContext('2d')!;
       ctx.fillStyle='#fff';ctx.fillRect(0,0,350,80);ctx.strokeStyle='#d0d0d0';ctx.lineWidth=1;
       for(let x=3;x<=339;x+=12){ctx.beginPath();ctx.moveTo(x+.5,2);ctx.lineTo(x+.5,74);ctx.stroke();}
       for(let y=2;y<=74;y+=12){ctx.beginPath();ctx.moveTo(3,y+.5);ctx.lineTo(339,y+.5);ctx.stroke();}
       [...outcomes].forEach((o,i)=>{const x=9.5+Math.floor(i/6)*12,y=8.5+(i%6)*12;ctx.fillStyle=o==='B'?'#f22':o==='P'?'#2785ff':'#009b5c';ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.fill();ctx.fillStyle='white';ctx.font='bold 8px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i%10),x,y+.5);
         if(i%7===0){ctx.fillStyle='white';ctx.beginPath();ctx.arc(x+3,y+3,2.2,0,Math.PI*2);ctx.fill();ctx.fillStyle=o==='B'?'#2785ff':'#f22';ctx.beginPath();ctx.arc(x+3,y+3,1.6,0,Math.PI*2);ctx.fill();}
+        if(i===0&&ambiguous){ctx.save();ctx.beginPath();ctx.arc(x,y,5.2,0,Math.PI*2);ctx.clip();ctx.fillStyle='#f22';ctx.fillRect(x,y-6,6,12);ctx.restore();}
       });
-    },outcomes);
+    },{outcomes,ambiguous});
     const aHistory='BPBPBBPPTBBPPBPBBPPBPP';await paint(aHistory);
     await game.locator('#board').screenshot();
     await page.getByRole('button',{name:'게임 창 선택',exact:true}).click();
@@ -33,6 +40,7 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await expect(page.getByTestId('capture-preview')).toBeVisible();
     await expect(page.getByTestId('capture-status')).toContainText('22개 결과 수집',{timeout:25000});
     await expect(page.getByTestId('total-results')).toHaveText('22');
+    await expect(page.getByTestId('forecast-basis-title')).toHaveText('22회차 기준 · 23~26회차');
     const initial=await page.evaluate(()=>window.analyzer.snapshot());expect(initial.results.every(r=>r.historical)).toBe(true);
     const before=await page.evaluate(()=>window.analyzer.captureInfo());
     expect(before.recognitionScale).toBe(2);
@@ -82,6 +90,20 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     await expect(page.getByTestId('total-results')).toHaveText('1');
     const newShoe=await page.evaluate(()=>window.analyzer.snapshot());expect(newShoe.shoeId).not.toBe(b.shoeId);
     expect((await page.evaluate(({room,shoe})=>window.analyzer.snapshot(room,shoe),{room:b.roomId!,shoe:b.shoeId!})).results).toHaveLength(11);
+    await expect(page.getByTestId('forecast-basis-title')).toHaveText('1회차 기준 · 2~5회차');
+    const latestHistory='PBPPPTPPBPPPPPBBPTBPBBBBPBBPBTBBP';expect(latestHistory).toHaveLength(33);
+    await paint(latestHistory,true);
+    await expect(page.getByTestId('capture-status')).toContainText('1번째 원',{timeout:5000});
+    await expect(page.getByTestId('capture-count')).toContainText('현재 화면 33개 원 후보');
+    await expect(page.getByTestId('forecast-basis-title')).toHaveText('현재 그림판 확인 중 · 예측 기준 갱신 대기');
+    await expect(page.getByLabel('예측 기준 회차')).toBeHidden();
+    await paint(latestHistory);
+    await expect(page.getByTestId('capture-status')).toContainText('33개 결과 수집',{timeout:5000});
+    await expect(page.getByTestId('total-results')).toHaveText('33');
+    await expect(page.getByTestId('forecast-basis-title')).toHaveText('33회차 기준 · 34~37회차');
+    await paint(latestHistory+'B');
+    await expect(page.getByTestId('forecast-basis-title')).toHaveText('34회차 기준 · 35~38회차',{timeout:5000});
+    await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
     await page.getByRole('button',{name:'자동 가져오기 중지',exact:true}).click();expect((await page.evaluate(()=>window.analyzer.captureInfo())).enabled).toBe(false);
   }catch(error){
     if(app){const page=await app.firstWindow();mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/native-capture-failure.png'}).catch(()=>{});

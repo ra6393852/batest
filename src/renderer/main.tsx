@@ -122,21 +122,22 @@ function App() {
   const latestScoredRound=recentScoredRounds[0];
   const bestRate = Math.max(...methods.map(m => s?.advanceAccuracy[m].rate ?? -1));
   const bestMethods = methods.filter(m => s?.advanceAccuracy[m].rate === bestRate);
-  const captureWaiting=capture?.enabled&&capture.state!=='collecting';
+  const captureWaiting=capture?.enabled&&(capture.state!=='collecting'||capture.roomId!==snapshot?.roomId||capture.shoeId!==snapshot?.shoeId||capture.rounds!==latest);
   return <div className="app">
     <header className="window-drag-handle" aria-label="프로그램 창 이동" title="이 제목 부분을 드래그하면 프로그램 창이 이동합니다."
       onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);draggingWindow.current=true;window.analyzer.beginWindowDrag({x:e.screenX,y:e.screenY});}}
       onPointerMove={e=>{if(draggingWindow.current)window.analyzer.moveWindowDrag({x:e.screenX,y:e.screenY});}}
       onPointerUp={e=>{draggingWindow.current=false;window.analyzer.endWindowDrag();if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
       onPointerCancel={()=>{draggingWindow.current=false;window.analyzer.endWindowDrag();}}>
-      <div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.3</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
-    <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span>왼쪽 아래 그림판 · 1초 간격</span></div>
+      <div><span className="eyebrow">READ-ONLY ANALYTICS · {capture?.appVersion??'버전 확인 중'}</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+    <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span data-testid="capture-version">실행 버전 {capture?.appVersion??'확인 중'} · 1초 간격</span></div>
       <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 그림판이 보이게 열어 두면 됩니다. <b>방 이름은 읽지 않습니다.</b></p>
       <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>
         {captureWindows.length>0&&<><select aria-label="자동 가져올 게임 창" value={captureId} onChange={e=>setCaptureId(e.target.value)}>{captureWindows.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><button disabled={busy||!captureId} onClick={()=>void action(()=>window.analyzer.captureStart(captureId))}>자동 가져오기 시작</button></>}
         {capture?.enabled&&<><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureStop())}>자동 가져오기 중지</button><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureNewShoe())}>새 그림판 기록</button></>}
       </div>
       <p role="status" data-testid="capture-status">{capture?.message??'게임 창 선택 대기'}</p>
+      {capture?.enabled&&capture.detectedResults!==undefined&&<p data-testid="capture-count" className="note">현재 화면 {capture.detectedResults}개 원 후보 · {captureWaiting?'확정 대기 · 이전 저장 기록은 현재 예측 기준으로 표시하지 않습니다.':`${capture.rounds??0}개 저장 확인`}</p>}
       {capture?.preview&&<details open={capture.state!=='collecting'} className="capture-preview"><summary>자동으로 가져온 이미지 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</summary><CapturePreview capture={capture}/></details>}
       <p className="note">이미지는 PC에서만 처리합니다. 보이는 그림판을 2배로 확대해 두 번 확인한 뒤 저장합니다. 표시 번호는 보이는 결과의 순서입니다. 그림판 내용이 바뀌면 별도 기록으로 시작하며, 같은 내용의 다른 게임은 새 그림판 기록을 누르세요.</p>
     </section>
@@ -179,8 +180,8 @@ function App() {
             <button disabled={busy || !imageConfirmed || unresolvedTies || invalidScores || imageSequence.length > 500 || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
           </div>}
         </section>}
-        <section className="forecast-panel"><div className="panel-title"><h2>다음 4회차 예측 · O/X</h2><span>{cutoff !== undefined ? `${cutoff}회차 기준 · ${cutoff + 1}~${cutoff + 4}회차` : '결과 기록 대기'}</span></div>
-          <label className="forecast-cutoff">예측 기준 회차<select aria-label="예측 기준 회차" value={selectedCutoff} onChange={e => setForecastSelection({ key: forecastKey, cutoff: e.target.value === 'latest' ? 'latest' : Number(e.target.value) })}><option value="latest">최신 완료 회차 기준 (자동 갱신)</option>{cutoffs.map(value => <option key={value} value={value}>{value}회차 기준 → {value + 1}~{value + 4}회차{value === latest ? ' (최신)' : ''}</option>)}</select></label>
+        <section className="forecast-panel"><div className="panel-title"><h2>다음 4회차 예측 · O/X</h2><span data-testid="forecast-basis-title">{captureWaiting?'현재 그림판 확인 중 · 예측 기준 갱신 대기':cutoff !== undefined ? `${cutoff}회차 기준 · ${cutoff + 1}~${cutoff + 4}회차` : '결과 기록 대기'}</span></div>
+          {!captureWaiting&&<label className="forecast-cutoff">예측 기준 회차<select aria-label="예측 기준 회차" value={selectedCutoff} onChange={e => setForecastSelection({ key: forecastKey, cutoff: e.target.value === 'latest' ? 'latest' : Number(e.target.value) })}><option value="latest">최신 완료 회차 기준 (자동 갱신)</option>{cutoffs.map(value => <option key={value} value={value}>{value}회차 기준 → {value + 1}~{value + 4}회차{value === latest ? ' (최신)' : ''}</option>)}</select></label>}
           {snapshot?.results.length && snapshot.results.every(result => result.source === 'demo') ? <p className="recognition-warning" data-testid="demo-data-warning">테스트 기록 분석 · 실제 Chrome 게임의 결과와 연결된 추정값이 아닙니다.</p> : null}
           <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>
           {captureWaiting?<p className="recognition-warning">그림판 확인 중 · {capture?.message}</p>:<div className="table-scroll"><table className="forecast-matrix"><thead>

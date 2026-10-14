@@ -79,7 +79,7 @@ export interface CaptureInfo {
   enabled: boolean; state: 'idle'|'waiting'|'collecting'|'blocked'; message: string;
   windowName?: string; preview?: string; capturedAt?: string; processedAt?: string;
   roomId?: string; roomName?: string; shoeId?: string; rounds?: number;
-  originalPreview?:string; recognitionScale?:2; recognitionMs?:number;
+  originalPreview?:string; recognitionScale?:2; recognitionMs?:number; appVersion?:string; detectedResults?:number;
 }
 export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];

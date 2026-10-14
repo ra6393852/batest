@@ -102,6 +102,9 @@ async function openBrowser(nextMode: 'site' | 'demo') {
 
 // sql.js writes whole-file atomic snapshots; a second writer must not overwrite the first.
 if (!app.requestSingleInstanceLock()) {
+  const message=`실행 버전 ${app.getVersion()}을 새로 시작하지 못했습니다. 이미 실행 중인 Baccarat Live Analyzer를 완전히 종료한 뒤 이 EXE를 다시 실행하세요. 기존 창만 표시되면 이전 버전의 판독 로직이 계속 실행될 수 있습니다.`;
+  if(isSmoke)console.error(message);
+  else dialog.showErrorBox('이미 실행 중인 분석기를 종료하세요',message);
   app.quit();
 } else {
 app.on('second-instance', () => { if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.focus(); } });

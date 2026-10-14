@@ -25,12 +25,13 @@ function ImageViewer({ src, alt }: { src: string; alt: string }) {
   </div>;
 }
 function CapturePreview({capture}:{capture:CaptureInfo}){
-  const [zoom,setZoom]=useState(2),pan=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
+  const [zoom,setZoom]=useState<'fit'|1|2>('fit'),pan=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
   return <div className="capture-viewer"><div className="image-zoom" role="group" aria-label="자동 이미지 확대">
+    <button className={zoom==='fit'?'':'secondary'} aria-pressed={zoom==='fit'} onClick={()=>setZoom('fit')}>한눈에 보기</button>
     <button className={zoom===1?'':'secondary'} aria-pressed={zoom===1} onClick={()=>setZoom(1)}>원본 100%</button>
     <button className={zoom===2?'':'secondary'} aria-pressed={zoom===2} onClick={()=>setZoom(2)}>2배 200%</button>
-    <span>승패 판독{capture.analysisMs!==undefined?` ${capture.analysisMs<1?'<1':capture.analysisMs}ms`:''}{capture.recognitionMs!==undefined?` · 캡처 포함 ${capture.recognitionMs}ms`:''} · 숫자는 점수로 별도 기록 · 이미지 드래그로 이동</span>
-  </div><div className="capture-viewport" tabIndex={0} aria-label="자동 이미지 드래그 보기" data-testid="capture-viewport"
+    <span>승패 판독{capture.analysisMs!==undefined?` ${capture.analysisMs<1?'<1':capture.analysisMs}ms`:''}{capture.recognitionMs!==undefined?` · 캡처 포함 ${capture.recognitionMs}ms`:''}</span>
+  </div><div className={`capture-viewport${zoom==='fit'?' fit-preview':''}`} tabIndex={0} aria-label="자동 이미지 드래그 보기" data-testid="capture-viewport"
     onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();const v=e.currentTarget;v.setPointerCapture(e.pointerId);pan.current={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};}}
     onPointerMove={e=>{if(!pan.current)return;const v=e.currentTarget;v.scrollLeft=pan.current.left+pan.current.x-e.clientX;v.scrollTop=pan.current.top+pan.current.y-e.clientY;}}
     onPointerUp={e=>{pan.current=undefined;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
@@ -48,6 +49,7 @@ function App() {
   const [tieCounts, setTieCounts] = useState<Record<number, string>>({});
   const [imageScores, setImageScores] = useState<string[]>([]);
   const [forecastSelection, setForecastSelection] = useState<{ key: string; cutoff: number | 'latest' }>();
+  const [showAllGrades,setShowAllGrades]=useState(false);
   const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
   const reviewPanel = useRef<HTMLDivElement>(null), request = useRef(0), imageReading = useRef(false);
   const draggingWindow=useRef(false);
@@ -118,29 +120,20 @@ function App() {
   const selectedCutoff = forecastSelection?.key === forecastKey ? forecastSelection.cutoff : 'latest';
   const cutoff = selectedCutoff !== 'latest' && cutoffs.includes(selectedCutoff) ? selectedCutoff : cutoffs[0];
   const bundle = snapshot?.forecasts.filter(f => f.cutoffRound === cutoff) ?? [];
-  const recentScoredRounds=[...new Set(snapshot?.forecasts.filter(f=>f.horizon===1&&f.mark).map(f=>f.targetRound)??[])].sort((a,b)=>b-a).slice(0,4);
-  const latestScoredRound=recentScoredRounds[0];
+  const scoredRounds=[...new Set(snapshot?.forecasts.filter(f=>f.mark).map(f=>f.targetRound)??[])].sort((a,b)=>a-b);
+  const recentScoredRounds=showAllGrades?scoredRounds:scoredRounds.slice(-7);
+  const latestScoredRound=scoredRounds.at(-1);
   const bestRate = Math.max(...methods.map(m => s?.advanceAccuracy[m].rate ?? -1));
   const bestMethods = methods.filter(m => s?.advanceAccuracy[m].rate === bestRate);
   const captureWaiting=capture?.enabled&&(capture.state!=='collecting'||capture.roomId!==snapshot?.roomId||capture.shoeId!==snapshot?.shoeId||capture.rounds!==latest);
-  return <div className="app">
+  return <div className={`app${capture?.enabled?' is-live':''}`}>
     <header className="window-drag-handle" aria-label="프로그램 창 이동" title="이 제목 부분을 드래그하면 프로그램 창이 이동합니다."
       onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);draggingWindow.current=true;window.analyzer.beginWindowDrag({x:e.screenX,y:e.screenY});}}
       onPointerMove={e=>{if(draggingWindow.current)window.analyzer.moveWindowDrag({x:e.screenX,y:e.screenY});}}
       onPointerUp={e=>{draggingWindow.current=false;window.analyzer.endWindowDrag();if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
       onPointerCancel={()=>{draggingWindow.current=false;window.analyzer.endWindowDrag();}}>
       <div><span className="eyebrow">READ-ONLY ANALYTICS · {capture?.appVersion??'버전 확인 중'}</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
-    <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span data-testid="capture-version">실행 버전 {capture?.appVersion??'확인 중'} · 1초 간격</span></div>
-      <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 그림판이 보이게 열어 두면 됩니다. <b>방 이름은 읽지 않습니다.</b></p>
-      <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>
-        {captureWindows.length>0&&<><select aria-label="자동 가져올 게임 창" value={captureId} onChange={e=>setCaptureId(e.target.value)}>{captureWindows.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><button disabled={busy||!captureId} onClick={()=>void action(()=>window.analyzer.captureStart(captureId))}>자동 가져오기 시작</button></>}
-        {capture?.enabled&&<><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureStop())}>자동 가져오기 중지</button><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureNewShoe())}>새 그림판 기록</button></>}
-      </div>
-      <p role="status" data-testid="capture-status">{capture?.message??'게임 창 선택 대기'}</p>
-      {capture?.enabled&&capture.detectedResults!==undefined&&<p data-testid="capture-count" className="note">현재 화면 {capture.detectedResults}개 원 후보 · {captureWaiting?'확정 대기 · 이전 저장 기록은 현재 예측 기준으로 표시하지 않습니다.':`${capture.rounds??0}개 저장 확인`}</p>}
-      {capture?.preview&&<div className="capture-preview" data-testid="live-monitor"><div>실시간 그림판 모니터 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</div><CapturePreview capture={capture}/></div>}
-      <p className="note">이미지는 PC에서만 처리합니다. 보이는 그림판을 2배로 확대해 두 번 확인한 뒤 저장합니다. 표시 번호는 보이는 결과의 순서입니다. 그림판 내용이 바뀌면 별도 기록으로 시작하며, 같은 내용의 다른 게임은 새 그림판 기록을 누르세요.</p>
-    </section>
+
     {!capture?.enabled&&<div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">
       <div><b>클립보드 이미지 바로 붙여넣기</b><p>이미지가 복사되어 있으면 이 프로그램에서 <kbd>Ctrl</kbd> + <kbd>V</kbd><br/>새 캡처가 필요할 때: <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> → 그림판 드래그</p></div>
       <button disabled={busy} onClick={() => void readImage()}>클립보드 이미지 붙여넣기 (Ctrl+V)</button>
@@ -148,6 +141,20 @@ function App() {
     {error && <div role="alert" className="error">{error}</div>}
     <main>
       <div className="left-pane">
+    <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span data-testid="capture-version">실행 버전 {capture?.appVersion??'확인 중'} · 1초 간격</span></div>
+      <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>
+        {captureWindows.length>0&&<><select aria-label="자동 가져올 게임 창" value={captureId} onChange={e=>setCaptureId(e.target.value)}>{captureWindows.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><button disabled={busy||!captureId} onClick={()=>void action(()=>window.analyzer.captureStart(captureId))}>자동 가져오기 시작</button></>}
+        {capture?.enabled&&<><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureStop())}>자동 가져오기 중지</button><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureNewShoe())}>새 그림판 기록</button></>}
+      </div>
+      <p role="status" data-testid="capture-status">{capture?.message??'게임 창 선택 대기'}</p>
+      {capture?.enabled&&capture.detectedResults!==undefined&&<p data-testid="capture-count" className="note">현재 화면 {capture.detectedResults}개 원 후보 · {captureWaiting?'확정 대기':`${capture.rounds??0}개 저장 확인`}</p>}
+      {capture?.preview&&<div className="capture-preview" data-testid="live-monitor"><div className="monitor-title">실시간 그림판 모니터<small>캡처 {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</small></div><CapturePreview capture={capture}/></div>}
+      <details className="capture-help"><summary>자동 수집 사용 안내</summary>
+        <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 그림판이 보이게 열어 두면 됩니다. 방 이름은 읽지 않습니다.</p>
+        <p>이미지는 PC에서만 처리합니다. 두 번 확인한 뒤 저장하며, 표시 번호는 보이는 결과의 순서입니다. 다른 그림판은 별도 기록으로 시작합니다. 같은 내용의 다른 게임은 새 그림판 기록을 누르세요.</p>
+        <p>한눈에 보기는 표시 크기만 맞춥니다. 판독은 항상 2배 이미지로 처리하며 숫자는 점수로 별도 기록합니다. 200% 확대 이미지는 드래그로 이동할 수 있습니다.</p>
+      </details>
+    </section>
         {!capture?.enabled&&<section className="image-panel"><div className="panel-title"><h2>그림판 이미지 분석</h2><span>클립보드 입력</span></div>
           <p className="note">캡처는 Windows 클립보드에 복사됩니다. 이 프로그램으로 돌아와 Ctrl+V를 누르면 인식 결과와 원본 미리보기가 나옵니다. 비드로드는 B/P/T를, 빅로드는 B/P 흐름을 읽고 초록 타이 표시의 횟수는 직접 확인합니다. 인식값은 확인 전까지 저장하지 않습니다.</p>
           <div className="image-fields"><label>방 이름<input aria-label="이미지 방 이름" value={imageRoom} maxLength={120} onChange={e => setImageRoom(e.target.value)}/></label><label>기록 그룹 / 슈<input aria-label="이미지 슈" value={imageShoe} maxLength={120} onChange={e => setImageShoe(e.target.value)}/></label><label>이미지 첫 결과의 기록 번호<input aria-label="이미지 시작 번호" type="number" min={1} max={999500} value={imageStart} onChange={e => setImageStart(Number(e.target.value))}/></label></div>
@@ -180,29 +187,30 @@ function App() {
             <button disabled={busy || !imageConfirmed || unresolvedTies || invalidScores || imageSequence.length > 500 || !imageRoom.trim() || !imageShoe.trim() || !Number.isInteger(imageStart) || imageStart < 1 || imageStart > 999500} onClick={() => void saveImage()}>확인한 그림판 기록 저장</button>
           </div>}
         </section>}
+
+      </div>
+      <div className="right-pane">
         <section className="forecast-panel"><div className="panel-title"><h2>다음 4회차 예측 · O/X</h2><span data-testid="forecast-basis-title">{captureWaiting?'현재 그림판 확인 중 · 예측 기준 갱신 대기':cutoff !== undefined ? `${cutoff}회차 기준 · ${cutoff + 1}~${cutoff + 4}회차` : '결과 기록 대기'}</span></div>
           {!captureWaiting&&<label className="forecast-cutoff">예측 기준 회차<select aria-label="예측 기준 회차" value={selectedCutoff} onChange={e => setForecastSelection({ key: forecastKey, cutoff: e.target.value === 'latest' ? 'latest' : Number(e.target.value) })}><option value="latest">최신 완료 회차 기준 (자동 갱신)</option>{cutoffs.map(value => <option key={value} value={value}>{value}회차 기준 → {value + 1}~{value + 4}회차{value === latest ? ' (최신)' : ''}</option>)}</select></label>}
           {snapshot?.results.length && snapshot.results.every(result => result.source === 'demo') ? <p className="recognition-warning" data-testid="demo-data-warning">테스트 기록 분석 · 실제 Chrome 게임의 결과와 연결된 추정값이 아닙니다.</p> : null}
-          <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>
-          {captureWaiting?<p className="recognition-warning">그림판 확인 중 · {capture?.message}</p>:<div className="table-scroll"><table className="forecast-matrix"><thead>
+          <p className="note forecast-legend">적중률 = O / (O + X) · A: 8덱 이론값 · B/C/D: 과거 패턴 추정</p>
+          {captureWaiting&&<p className="forecast-state-note">그림판 판독 대기 · 아래 적중률은 저장된 기록 기준입니다.</p>}<div className="table-scroll"><table className="forecast-matrix"><thead>
             <tr><th rowSpan={3}>회차 / 실제</th>{methods.map(method=><th key={method} colSpan={2} data-testid={`forecast-method-${method}`}><b>{method}</b><small>{methodNames[method]}</small></th>)}</tr>
             <tr>{methods.map(method=>{const a=s?.advanceAccuracy[method],f=bundle.find(f=>f.method===method&&f.horizon===1);return <th key={method} colSpan={2} data-testid={`method-accuracy-${method}`}><b className="hit-rate">{a?.count?percent(a.rate):'채점 대기'}</b><small>O {a?.correct??0} / X {(a?.count??0)-(a?.correct??0)}<br/>{method==='A'?'8덱 이론값 · 항상 B':`분석 표본 ${f?.sampleSize??0}개${f?.sampleSize===0?' · 이론값 사용':''}`}</small></th>;})}</tr>
             <tr>{methods.flatMap(method=>[<th key={`${method}:pick`}>예상 답</th>,<th key={`${method}:mark`}>O/X</th>])}</tr>
-          </thead><tbody>{selectedCutoff==='latest'&&latestScoredRound!==undefined&&<tr className="latest-scored" data-testid="latest-scored-row"><th>최근 {latestScoredRound}<small>실제 {snapshot!.results.find(r=>r.round===latestScoredRound)?.outcome}</small></th>{methods.flatMap(method=>{const f=snapshot!.forecasts.find(f=>f.method===method&&f.horizon===1&&f.targetRound===latestScoredRound);return [<td key={`${method}:recent-pick`} className={f?.pick}><strong>{f?.pick}</strong></td>,<td key={`${method}:recent-mark`} className={f?.mark==='O'?'T':'B'} data-testid={`latest-mark-${method}`}><b>{f?.mark??'제외'}</b></td>];})}</tr>}{[1,2,3,4].map(horizon=>{
+          </thead><tbody>{captureWaiting?<tr><td colSpan={9}>현재 그림판 확인 후 다음 4회차 예측을 표시합니다.</td></tr>:<>{selectedCutoff==='latest'&&recentScoredRounds.map(round=><tr key={`scored:${round}`} className={round===latestScoredRound?'latest-scored':'scored-round'} data-testid={`recent-score-${round}`} data-round={round}><th>{round}<small>실제 {snapshot!.results.find(r=>r.round===round)?.outcome}</small></th>{methods.flatMap(method=>{const f=snapshot!.forecasts.filter(f=>f.method===method&&f.mark&&f.targetRound===round).sort((a,b)=>b.cutoffRound-a.cutoffRound)[0];return [<td key={`${method}:recent-pick`} className={f?.pick} title={f?`${f.cutoffRound}회차 기준 · ${f.horizon}회차 앞 · ${f.basis}`:undefined}><strong>{f?.pick}</strong></td>,<td key={`${method}:recent-mark`} className={f?.mark==='O'?'T':'B'} data-testid={round===latestScoredRound?`latest-mark-${method}`:undefined}><b>{f?.mark??'제외'}</b></td>];})}</tr>)}{[1,2,3,4].map(horizon=>{
             const known=cutoff===undefined?undefined:snapshot?.results.find(r=>r.round===cutoff+horizon);
             const actual=bundle.find(f=>f.horizon===horizon&&f.actual)?.actual??known?.outcome;
-            return <tr key={horizon} data-testid={`forecast-row-${horizon}`}><th>{cutoff===undefined?'—':cutoff+horizon}<small>{actual?`실제 ${actual}`:'새 결과 대기'}</small></th>{methods.flatMap(method=>{
+            return <tr key={horizon} data-testid={`forecast-row-${horizon}`} data-round={cutoff===undefined?undefined:cutoff+horizon}><th>{cutoff===undefined?'—':cutoff+horizon}<small>{actual?`실제 ${actual}`:'대기'}</small></th>{methods.flatMap(method=>{
               const f=bundle.find(value=>value.horizon===horizon&&value.method===method);
               return [<td key={`${method}:pick`} className={f?.pick} data-testid={`forecast-${method}-${horizon}`} title={f?`${labels[f.pick]} · ${f.basis} · 표본 ${f.sampleSize}개`:'예측 생성 대기'}><strong>{f?.pick??'—'}</strong></td>,<td key={`${method}:mark`} data-testid={`mark-${method}-${horizon}`} title={known&&!f?.mark?'초기/복원 기록 또는 예측보다 먼저 관측한 결과여서 채점에서 제외합니다.':undefined} className={f?.mark==='O'?'T':f?.mark==='X'?'B':''}>{f?.mark??(known?'제외':'대기')}</td>];
             })}</tr>;
-          })}</tbody><tfoot><tr><th>선택 묶음</th>{methods.map(method=>{const fs=bundle.filter(f=>f.method===method),a=accuracy(fs);return <td key={method} colSpan={2} data-testid={`bundle-accuracy-${method}`}>{percent(a.rate)}<small>O {a.correct} / X {a.count-a.correct}<br/>대기 {fs.length-a.count}</small></td>;})}</tr></tfoot></table></div>}
+          })}</>}</tbody>{!captureWaiting&&<tfoot><tr><th>선택 묶음</th>{methods.map(method=>{const fs=bundle.filter(f=>f.method===method),a=accuracy(fs);return <td key={method} colSpan={2} data-testid={`bundle-accuracy-${method}`}>{percent(a.rate)}<small>O {a.correct} / X {a.count-a.correct}<br/>대기 {fs.length-a.count}</small></td>;})}</tr></tfoot>}</table></div>
           {!captureWaiting&&snapshot?.results.length&&s?.advanceComparisons===0?<p className="grading-note" data-testid="grading-wait">채점된 예측 0건 · 처음 읽은 기록은 기준 자료입니다. {latest===undefined?'':`${latest+1}회차부터`} 새 결과가 확인되면 O/X와 적중률을 표시합니다. 다른 방 이동·수집 중단 뒤 복원한 기록은 사후 채점하지 않습니다.</p>:null}
-          {!captureWaiting&&recentScoredRounds.length>0&&<div className="table-scroll"><h3>최근 결과 채점 · 즉시 다음 회차 예측</h3><table className="forecast-matrix"><thead><tr><th>회차 / 실제</th>{methods.map(m=><th key={m}>{m}</th>)}</tr></thead><tbody>{recentScoredRounds.map(round=>{const values=snapshot!.forecasts.filter(f=>f.horizon===1&&f.targetRound===round);return <tr key={round} data-testid={`recent-score-${round}`}><th>{round}<small>실제 {values[0]?.actual}</small></th>{methods.map(m=>{const f=values.find(f=>f.method===m);return <td key={m}><strong className={f?.pick}>{f?.pick}</strong> <b className={f?.mark==='O'?'T':'B'}>{f?.mark}</b></td>;})}</tr>;})}</tbody></table></div>}
+          {!captureWaiting&&selectedCutoff==='latest'&&scoredRounds.length>7&&<button className="quiet" aria-pressed={showAllGrades} onClick={()=>setShowAllGrades(value=>!value)}>{showAllGrades?'최근 7회만 보기':`이전 채점 포함 전체 ${scoredRounds.length}회 보기`}</button>}
           {!captureWaiting&&<details className="forecast-probabilities"><summary>추정 확률·표본 보기</summary><table><thead><tr><th>회차</th><th>방식</th><th>B%</th><th>P%</th><th>T%</th><th>표본</th></tr></thead><tbody>{bundle.map(f=><tr key={f.id} title={f.basis}><td>{f.targetRound}</td><td>{f.method}</td>{(['B','P','T'] as Outcome[]).map(o=><td key={o}>{(f.probabilities[o]*100).toFixed(2)}</td>)}<td>{f.sampleSize}</td></tr>)}</tbody></table></details>}
-          <p className="note">선택한 기준 회차의 예측값은 고정됩니다. 적중률은 실제 결과가 확인된 예측만 셉니다. 예측 저장 → 새 이미지 관측 순서로 채점합니다. 실제 게임 발생 시각은 자동 확인하지 못하며, 수집 중단·방 이동 중 놓친 기록은 사후 채점하지 않습니다.</p>
+          <details className="forecast-help"><summary>예측·채점 기준</summary><p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p><p className="note">선택한 기준 회차의 예측값은 고정됩니다. 적중률은 실제 결과가 확인된 예측만 셉니다. 예측 저장 → 새 이미지 관측 순서로 채점합니다. 실제 게임 발생 시각은 자동 확인하지 못하며, 수집 중단·방 이동 중 놓친 기록은 사후 채점하지 않습니다.</p><p className="note">과거 행은 해당 회차에 대한 가장 최근 기준의 채점된 예측을 표시합니다. 누적 적중률은 보존된 4회차 사전 예측 전체 기준입니다. 원래 저장한 예측값은 수정하지 않습니다.</p></details>
         </section>
-      </div>
-      <div className="right-pane">
         <section><div className="panel-title"><h2>방별 통계</h2>{captureWaiting&&<span>현재 화면 판독 대기 · 아래는 저장된 기록</span>}</div>
           <div className="selectors"><label>방<select aria-label="방" value={snapshot?.roomId ?? ''} onChange={e => { setRoom(e.target.value); setShoe(undefined); }}><option value="" disabled>방 기록 없음</option>{snapshot?.rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
             <label>슈<select aria-label="슈" value={snapshot?.shoeId ?? ''} onChange={e => setShoe(e.target.value)}><option value="" disabled>슈 기록 없음</option>{snapshot?.rooms.find(r => r.id === snapshot.roomId)?.shoes.map(shoe => <option key={shoe}>{shoe}</option>)}</select></label></div>

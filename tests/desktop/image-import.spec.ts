@@ -127,6 +127,9 @@ test('numeric clipboard records, frozen 22-round picks, O/X rates and rolling pr
     await page.getByLabel('예측 기준 회차').selectOption('latest');
     await expect(page.getByTestId('latest-mark-A')).toHaveText('O');
     for(let horizon=1;horizon<=4;horizon++)await expect(page.getByTestId(`forecast-row-${horizon}`)).toContainText(String(26+horizon));
+    // Include graded horizons 2–4 when no immediate-next-round forecast exists.
+    // Batch updates still give one continuous chronological table, not 23→27.
+    expect(await page.locator('.forecast-matrix tbody tr[data-round]').evaluateAll(rows=>rows.map(row=>Number((row as HTMLElement).dataset.round)))).toEqual([23,24,25,26,27,28,29,30]);
     await app.close();app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const reopened=await app.firstWindow();await expect(reopened.getByTestId('total-results')).toHaveText('26');
     expect((await reopened.evaluate(()=>window.analyzer.snapshot())).forecasts.filter(f=>f.cutoffRound===22).every(f=>f.actual)).toBe(true);

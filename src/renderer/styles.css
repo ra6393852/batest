@@ -20,3 +20,7 @@ nav{flex-wrap:wrap}.status{flex:1;min-width:180px}
 .forecast-matrix .hit-rate { font-size: 21px; }
 .forecast-matrix .latest-scored { background: #15312e; }
 .grading-note { padding: 12px; border: 1px solid #786638; border-radius: 8px; background: #2a2519; color: #f3d493; font-size: 15px; line-height: 1.6; }
+.window-drag-handle { cursor: move; user-select: none; touch-action: none; }
+.capture-viewport { overflow: auto; max-height: 340px; border: 1px solid #43516b; cursor: grab; touch-action: none; user-select: none; }
+.capture-viewport:active { cursor: grabbing; }
+.capture-preview .capture-viewport img { max-width: none; max-height: none; width: auto; height: auto; display: block; margin: 0; border: 0; }

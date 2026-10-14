@@ -24,6 +24,20 @@ function ImageViewer({ src, alt }: { src: string; alt: string }) {
     <div className="image-viewport"><img src={src} alt={alt} onLoad={e => setWidth(e.currentTarget.naturalWidth)} style={{ width: width ? width * zoom : undefined }}/></div>
   </div>;
 }
+function CapturePreview({capture}:{capture:CaptureInfo}){
+  const [zoom,setZoom]=useState(2),pan=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
+  return <div className="capture-viewer"><div className="image-zoom" role="group" aria-label="자동 이미지 확대">
+    <button className={zoom===1?'':'secondary'} aria-pressed={zoom===1} onClick={()=>setZoom(1)}>원본 100%</button>
+    <button className={zoom===2?'':'secondary'} aria-pressed={zoom===2} onClick={()=>setZoom(2)}>2배 200%</button>
+    <span>2배 이미지로 판독 · 이미지를 잡고 드래그해 이동</span>
+  </div><div className="capture-viewport" tabIndex={0} aria-label="자동 이미지 드래그 보기" data-testid="capture-viewport"
+    onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();const v=e.currentTarget;v.setPointerCapture(e.pointerId);pan.current={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};}}
+    onPointerMove={e=>{if(!pan.current)return;const v=e.currentTarget;v.scrollLeft=pan.current.left+pan.current.x-e.clientX;v.scrollTop=pan.current.top+pan.current.y-e.clientY;}}
+    onPointerUp={e=>{pan.current=undefined;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
+    onPointerCancel={()=>{pan.current=undefined;}}>
+    <img data-testid="capture-preview" draggable={false} src={zoom===1?(capture.originalPreview??capture.preview):capture.preview} alt="자동으로 가져온 그림판"/>
+  </div></div>;
+}
 function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [selectedRoom, setRoom] = useState<string>(), [selectedShoe, setShoe] = useState<string>();
@@ -36,6 +50,7 @@ function App() {
   const [forecastSelection, setForecastSelection] = useState<{ key: string; cutoff: number | 'latest' }>();
   const [imageRoom, setImageRoom] = useState('이미지 분석 방'), [imageShoe, setImageShoe] = useState(() => `이미지-${new Date().toISOString().slice(0, 10)}-${crypto.randomUUID().slice(0, 8)}`), [imageStart, setImageStart] = useState(1), [imageSaved, setImageSaved] = useState('');
   const reviewPanel = useRef<HTMLDivElement>(null), request = useRef(0), imageReading = useRef(false);
+  const draggingWindow=useRef(false);
   useEffect(() => { if (imageReview || imagePreview) reviewPanel.current?.scrollIntoView({ block: 'start' }); }, [imageReview, imagePreview]);
   const load = useCallback(async () => {
     const id = ++request.current;
@@ -109,16 +124,21 @@ function App() {
   const bestMethods = methods.filter(m => s?.advanceAccuracy[m].rate === bestRate);
   const captureWaiting=capture?.enabled&&capture.state!=='collecting';
   return <div className="app">
-    <header><div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.1</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
+    <header className="window-drag-handle" aria-label="프로그램 창 이동" title="이 제목 부분을 드래그하면 프로그램 창이 이동합니다."
+      onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);draggingWindow.current=true;window.analyzer.beginWindowDrag({x:e.screenX,y:e.screenY});}}
+      onPointerMove={e=>{if(draggingWindow.current)window.analyzer.moveWindowDrag({x:e.screenX,y:e.screenY});}}
+      onPointerUp={e=>{draggingWindow.current=false;window.analyzer.endWindowDrag();if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
+      onPointerCancel={()=>{draggingWindow.current=false;window.analyzer.endWindowDrag();}}>
+      <div><span className="eyebrow">READ-ONLY ANALYTICS · 0.5.2</span><h1>Baccarat <span>Live Analyzer</span></h1></div><span className="safety">자동 베팅 없음</span></header>
     <section className="capture-panel"><div className="panel-title"><h2>게임 창 이미지 자동 가져오기</h2><span>왼쪽 아래 그림판 · 1초 간격</span></div>
-      <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 창을 최소화하지 않고 그림판과 방 이름을 보이게 열어 두면 됩니다.</p>
+      <p>Chrome에서 바카라에 들어간 뒤 <b>게임 창 선택 → 자동 가져오기 시작</b>을 누르세요. 그림판이 보이게 열어 두면 됩니다. <b>방 이름은 읽지 않습니다.</b></p>
       <div className="capture-controls"><button disabled={busy} onClick={()=>void action(async()=>{const sources=await window.analyzer.captureWindows();if(!sources.length)throw new Error('선택할 창이 없습니다. Chrome 게임 창을 먼저 열어 주세요.');setCaptureWindows(sources);setCaptureId(sources.find(s=>/Chrome/i.test(s.name))?.id??sources[0]?.id??'');})}>게임 창 선택</button>
         {captureWindows.length>0&&<><select aria-label="자동 가져올 게임 창" value={captureId} onChange={e=>setCaptureId(e.target.value)}>{captureWindows.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><button disabled={busy||!captureId} onClick={()=>void action(()=>window.analyzer.captureStart(captureId))}>자동 가져오기 시작</button></>}
-        {capture?.enabled&&<><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureStop())}>자동 가져오기 중지</button><button className="secondary" disabled={!capture.roomName} onClick={()=>void action(()=>window.analyzer.captureNewShoe())}>현재 방 새 슈</button></>}
+        {capture?.enabled&&<><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureStop())}>자동 가져오기 중지</button><button className="secondary" onClick={()=>void action(()=>window.analyzer.captureNewShoe())}>새 그림판 기록</button></>}
       </div>
       <p role="status" data-testid="capture-status">{capture?.message??'게임 창 선택 대기'}</p>
-      {capture?.preview&&<details open={capture.state!=='collecting'} className="capture-preview"><summary>자동으로 가져온 이미지 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</summary><img data-testid="capture-preview" src={capture.preview} alt="자동으로 가져온 게임 창 왼쪽 아래 화면"/></details>}
-      <p className="note">이미지는 PC에서만 처리하며 파일로 저장하지 않습니다. 방 이름·전체 결과 수와 그림판을 확인한 뒤 자동 저장합니다. 방 이동 중에는 예측 표시를 보류합니다. 새 창이 열리면 그 창을 다시 선택하세요.</p>
+      {capture?.preview&&<details open={capture.state!=='collecting'} className="capture-preview"><summary>자동으로 가져온 이미지 · {capture.capturedAt?new Date(capture.capturedAt).toLocaleTimeString('ko-KR'):''}{capture.processedAt?` · 판독 ${new Date(capture.processedAt).toLocaleTimeString('ko-KR')}`:''}</summary><CapturePreview capture={capture}/></details>}
+      <p className="note">이미지는 PC에서만 처리합니다. 보이는 그림판을 2배로 확대해 두 번 확인한 뒤 저장합니다. 표시 번호는 보이는 결과의 순서입니다. 그림판 내용이 바뀌면 별도 기록으로 시작하며, 같은 내용의 다른 게임은 새 그림판 기록을 누르세요.</p>
     </section>
     {!capture?.enabled&&<div className="paste-guide" role="group" aria-label="그림판 캡처 붙여넣기 안내">
       <div><b>클립보드 이미지 바로 붙여넣기</b><p>이미지가 복사되어 있으면 이 프로그램에서 <kbd>Ctrl</kbd> + <kbd>V</kbd><br/>새 캡처가 필요할 때: <kbd>Win</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> → 그림판 드래그</p></div>
@@ -163,7 +183,7 @@ function App() {
           <label className="forecast-cutoff">예측 기준 회차<select aria-label="예측 기준 회차" value={selectedCutoff} onChange={e => setForecastSelection({ key: forecastKey, cutoff: e.target.value === 'latest' ? 'latest' : Number(e.target.value) })}><option value="latest">최신 완료 회차 기준 (자동 갱신)</option>{cutoffs.map(value => <option key={value} value={value}>{value}회차 기준 → {value + 1}~{value + 4}회차{value === latest ? ' (최신)' : ''}</option>)}</select></label>
           {snapshot?.results.length && snapshot.results.every(result => result.source === 'demo') ? <p className="recognition-warning" data-testid="demo-data-warning">테스트 기록 분석 · 실제 Chrome 게임의 결과와 연결된 추정값이 아닙니다.</p> : null}
           <p className="note">A는 8덱 이론값, B/C/D는 과거 결과의 평활 추정입니다. 카드 구성과 실제 다음 판의 확률은 알 수 없습니다. 표본이 많아도 예측력이 보장되지는 않습니다.</p>
-          {captureWaiting?<p className="recognition-warning">현재 게임 화면 확인 중 · {capture?.message} · 이전 방의 예측을 표시하지 않습니다.</p>:<div className="table-scroll"><table className="forecast-matrix"><thead>
+          {captureWaiting?<p className="recognition-warning">그림판 확인 중 · {capture?.message}</p>:<div className="table-scroll"><table className="forecast-matrix"><thead>
             <tr><th rowSpan={3}>회차 / 실제</th>{methods.map(method=><th key={method} colSpan={2} data-testid={`forecast-method-${method}`}><b>{method}</b><small>{methodNames[method]}</small></th>)}</tr>
             <tr>{methods.map(method=>{const a=s?.advanceAccuracy[method],f=bundle.find(f=>f.method===method&&f.horizon===1);return <th key={method} colSpan={2} data-testid={`method-accuracy-${method}`}><b className="hit-rate">{a?.count?percent(a.rate):'채점 대기'}</b><small>O {a?.correct??0} / X {(a?.count??0)-(a?.correct??0)}<br/>{method==='A'?'8덱 이론값 · 항상 B':`분석 표본 ${f?.sampleSize??0}개${f?.sampleSize===0?' · 이론값 사용':''}`}</small></th>;})}</tr>
             <tr>{methods.flatMap(method=>[<th key={`${method}:pick`}>예상 답</th>,<th key={`${method}:mark`}>O/X</th>])}</tr>

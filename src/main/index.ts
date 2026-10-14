@@ -11,7 +11,6 @@ import { ObservationTracker } from '../collector/dom';
 import { ChromeBridge } from './chrome-bridge';
 import { ImageImport } from './image-import';
 import { ScoreReader } from './score-reader';
-import { WindowReader } from './window-reader';
 import { WindowCapture } from './window-capture';
 import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
@@ -118,13 +117,20 @@ void app.whenReady().then(async () => {
   window.webContents.on('will-navigate', event => event.preventDefault());
   const ocrResources=app.isPackaged?join(process.resourcesPath,'ocr'):null;
   const workerFile=ocrResources?join(ocrResources,'worker.cjs'):join(__dirname,'ocr-worker.cjs');
-  windowCapture=new WindowCapture(store,new WindowReader(ocrResources,workerFile),new ScoreReader(ocrResources,workerFile),
+  windowCapture=new WindowCapture(store,new ScoreReader(ocrResources,workerFile),
     info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',info);},changed);
   ipcMain.handle('capture:windows',async event=>{local(event);return windowCapture!.windows();});
   ipcMain.handle('capture:start',async(event,id)=>{local(event);await windowCapture!.start(z.string().regex(/^window:\d+:\d+$/).parse(id));});
   ipcMain.handle('capture:stop',event=>{local(event);windowCapture!.stop();});
   ipcMain.handle('capture:info',event=>{local(event);return windowCapture!.current();});
   ipcMain.handle('capture:new-shoe',event=>{local(event);windowCapture!.newShoe();});
+  const dragPoint=z.object({x:z.number().finite().min(-32768).max(32768),y:z.number().finite().min(-32768).max(32768)}).strict();
+  let windowDrag:{x:number;y:number;wx:number;wy:number}|undefined;
+  ipcMain.on('window:drag-start',(event,raw)=>{local(event);const p=dragPoint.safeParse(raw);if(!p.success)return;const [wx,wy]=window.getPosition();windowDrag={...p.data,wx,wy};});
+  ipcMain.on('window:drag-move',(event,raw)=>{local(event);const p=dragPoint.safeParse(raw);if(!windowDrag||!p.success)return;
+    window.setPosition(Math.round(windowDrag.wx+p.data.x-windowDrag.x),Math.round(windowDrag.wy+p.data.y-windowDrag.y));});
+  ipcMain.on('window:drag-end',event=>{local(event);windowDrag=undefined;});
+  window.on('blur',()=>{windowDrag=undefined;});
   const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
   if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
     chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,

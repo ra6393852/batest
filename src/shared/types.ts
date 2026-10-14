@@ -50,6 +50,9 @@ export interface AnalyzerAPI {
   captureStop(): Promise<void>;
   captureInfo(): Promise<CaptureInfo>;
   captureNewShoe(): Promise<void>;
+  beginWindowDrag(point:{x:number;y:number}):void;
+  moveWindowDrag(point:{x:number;y:number}):void;
+  endWindowDrag():void;
   onCapture(callback: (info: CaptureInfo) => void): () => void;
   analyzeImage(): Promise<ImageReview | ImagePreview | null>;
   pasteImage(): Promise<ImageReview | ImagePreview>;
@@ -76,6 +79,7 @@ export interface CaptureInfo {
   enabled: boolean; state: 'idle'|'waiting'|'collecting'|'blocked'; message: string;
   windowName?: string; preview?: string; capturedAt?: string; processedAt?: string;
   roomId?: string; roomName?: string; shoeId?: string; rounds?: number;
+  originalPreview?:string; recognitionScale?:2;
 }
 export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];

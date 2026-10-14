@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
+  beginWindowDrag: point=>ipcRenderer.send('window:drag-start',point),
+  moveWindowDrag: point=>ipcRenderer.send('window:drag-move',point),
+  endWindowDrag: ()=>ipcRenderer.send('window:drag-end'),
   captureWindows: () => ipcRenderer.invoke('capture:windows'),
   captureStart: id => ipcRenderer.invoke('capture:start', id),
   captureStop: () => ipcRenderer.invoke('capture:stop'),

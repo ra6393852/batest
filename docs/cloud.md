@@ -41,3 +41,5 @@ history-review.ts는 각 회차의 결과와 점수를 가리고 앞선 연속 �
 Linux에서는 `bash scripts/test-cloud.sh`로 기존 분석기를 검증합니다. Windows에서는 `npm run test:licensed`와 `npm run test:licensed -- --package`로 임시 실제 서버에 고정된 Customer 소스/EXE, DPAPI, 등록·해제·연장·차단·만료, 관리자 브라우저를 검사합니다. 검사가 끝나면 Review 빌드를 복원합니다. 실제 고객용은 `npm run dist:customer -- 공개설정.json`이며 HTTPS 주소를 요구합니다. 개인 키/고객 코드/운영 암호는 설정 초안이나 Git에 넣지 않습니다.
 
 로컬 서버 검토는 `npm run license:init -- --url http://127.0.0.1:4380 --data local-test-data`와 `npm run license:start -- --data local-test-data --port 4380`입니다. 암호는 터미널에서 숨김 입력합니다. `/health`의 `{ok:true}`와 실제 코드 발급/등록으로 기능을 확인하세요. 프로세스는 다음 환경에 유지되지 않으므로 필요할 때 다시 시작합니다. 공개 서버·DNS·TLS는 별도 배포가 필요합니다. 환경 온보딩 UI에 localhost 미리보기 링크를 만들지 않습니다.
+
+판매자 관리 수정 검증은 `npm run license:build` 후 `npx --no-install playwright test --config playwright.server.config.ts`입니다. 임시 SQLite/키/관리자 암호만 사용합니다. Linux 컨테이너에서 이미 설치된 Chromium을 사용할 때만 `SERVER_TEST_BROWSER_PATH=/usr/bin/chromium`을 지정합니다. 별도 Seller server update CI가 Windows 실제 브라우저의 연장·취소·PC 해제·재발급/복사·오류·세션 만료를 검증하고 server.cjs와 업데이트 TXT만 묶어 제공합니다. 서버 업데이트는 기존 license-data를 보존하며 공개 주소/서명 키가 같으면 Customer 앱을 재빌드하지 않습니다.

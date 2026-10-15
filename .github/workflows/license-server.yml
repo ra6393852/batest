@@ -1,0 +1,49 @@
+name: Seller server update
+on:
+  pull_request:
+    paths:
+      - 'src/license-server/**'
+      - 'src/licensing/**'
+      - 'src/main/license-client.ts'
+      - 'tests/unit/licens*.test.ts'
+      - 'tests/server/**'
+      - 'playwright.server.config.ts'
+      - 'packaging/license-manual.txt'
+      - 'packaging/server-update.txt'
+      - 'scripts/build-license-server.mjs'
+      - '.github/workflows/license-server.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  server:
+    runs-on: windows-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run license:build
+      - run: npx --no-install playwright install chromium
+      - name: Test real seller browser actions against bundled server
+        run: npx --no-install playwright test --config playwright.server.config.ts --reporter=list,github
+      - name: Prepare server-only update without seller keys or data
+        shell: pwsh
+        run: |
+          $updateDir = Join-Path $env:RUNNER_TEMP 'baccarat-seller-update'
+          New-Item -ItemType Directory -Force $updateDir | Out-Null
+          Copy-Item dist/license-server/server.cjs $updateDir
+          Copy-Item packaging/server-update.txt (Join-Path $updateDir '업데이트방법.txt')
+          Copy-Item packaging/license-manual.txt (Join-Path $updateDir '라이선스-등록-해제-판매설명서.txt')
+          if ((Get-ChildItem $updateDir -File).Count -ne 3) { throw 'Unexpected update contents' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baccarat-seller-server-update
+          path: ${{ runner.temp }}/baccarat-seller-update/**
+          if-no-files-found: error

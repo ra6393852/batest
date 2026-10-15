@@ -46,9 +46,10 @@ test('seller browser can select twelve months, issue/download codes and manage d
     await expect(page.locator('#codes')).toContainText('12개월');expect((await page.locator('#codes').textContent())!.match(/BLA-/g)).toHaveLength(2);
     const download=page.waitForEvent('download');await page.getByRole('button',{name:'발급 CSV 다운로드',exact:true}).click();expect((await download).suggestedFilename()).toContain('발급코드');
     await page.locator('#query').fill('seller UI verification');await page.getByRole('button',{name:'검색',exact:true}).click();await expect(page.locator('#rows tr')).toHaveCount(2);
-    page.on('dialog',d=>void d.accept());await page.locator('#rows tr').first().getByRole('button',{name:'사용 차단',exact:true}).click();await expect(page.locator('#rows tr').first()).toContainText('차단');
-    await page.locator('#rows tr').first().getByRole('button',{name:'차단 해제',exact:true}).click();await expect(page.locator('#rows tr').first()).toContainText('미사용');
+    await page.locator('#rows tr').first().getByRole('button',{name:'사용 차단',exact:true}).click();await page.locator('#manage-confirm').click();await expect(page.locator('#manage-title')).toHaveText('사용 차단 완료');await page.locator('#manage-cancel').click();await expect(page.locator('#rows tr').first()).toContainText('차단');
+    await page.locator('#rows tr').first().getByRole('button',{name:'차단 해제',exact:true}).click();await page.locator('#manage-confirm').click();await expect(page.locator('#manage-title')).toHaveText('차단 해제 완료');await page.locator('#manage-cancel').click();await expect(page.locator('#rows tr').first()).toContainText('미사용');
     await page.locator('#rows tr').first().getByRole('button',{name:'변경 이력',exact:true}).click();await expect(page.locator('#history')).toContainText('unblock');
+    await page.locator('#manage-cancel').click();
     await page.getByRole('button',{name:'로그아웃',exact:true}).click();await expect(page.locator('#login')).toBeVisible();
   }finally{await browser.close();}
 });

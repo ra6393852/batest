@@ -26,7 +26,7 @@ export class LicenseClient {
   private async proof(action:LicenseAction,code?:string){
     if(!this.device)throw new Error('PC 인증 정보가 없습니다.');
     const {nonce}=await this.post('/v1/challenge',{action,publicKey:this.device.publicKey}) as unknown as {nonce:string};
-    return this.post('/v1/'+action,signedRequest({action,nonce,publicKey:this.device.publicKey,sessionId:this.session,...(code?{code}:{}),...(this.device.licenseId?{licenseId:this.device.licenseId}:{})},this.device.privateKey));
+    const requestId=randomUUID();const result=await this.post('/v1/'+action,signedRequest({action,nonce,requestId,publicKey:this.device.publicKey,sessionId:this.session,...(code?{code}:{}),...(this.device.licenseId?{licenseId:this.device.licenseId}:{})},this.device.privateKey));return {result,requestId};
   }
   private fail(error:unknown){this.lease=undefined;this.deadline=0;this.state.message=error instanceof Error&&!(error instanceof TypeError)?error.message:'인증 서버에 연결하지 못했습니다. 인터넷 연결과 서버 상태를 확인하세요.';this.notify(this.status());}
   async activate(code:string){
@@ -36,15 +36,15 @@ export class LicenseClient {
       if(!this.device){const pair=generateKeyPairSync('ed25519');this.device={publicKey:pair.publicKey.export({format:'pem',type:'spki'}).toString(),privateKey:pair.privateKey.export({format:'pem',type:'pkcs8'}).toString()};this.save();}
       // Do not lose the key if the response is interrupted after server registration.
       const started=this.monotonic(),raw=await this.proof('activate',code.trim().toUpperCase());
-      if(generation!==this.generation)return this.status();this.accept(raw,started);this.device.licenseId=this.lease!.licenseId;this.save();
+      if(generation!==this.generation)return this.status();this.accept(raw.result,started,raw.requestId);this.device.licenseId=this.lease!.licenseId;this.save();
     }catch(error){this.fail(error);}finally{this.busy=false;}return this.status();
   }
-  private accept(raw:unknown,started:number){const lease=verifyLease(raw,this.config.publicKey,deviceId(this.device!.publicKey),this.session);const remaining=lease.validUntil-lease.issuedAt-(this.monotonic()-started);if(remaining<=0)throw new Error('인증이 만료되었습니다. 다시 시도하세요.');this.lease=lease;this.deadline=this.monotonic()+remaining;this.state={mode:'licensed',allowed:true,message:'인증 완료 · 이 PC에 등록되었습니다.',licenseId:lease.licenseId,expiresAt:new Date(lease.expiresAt).toISOString()};this.notify(this.status());}
+  private accept(raw:unknown,started:number,requestId:string){const lease=verifyLease(raw,this.config.publicKey,deviceId(this.device!.publicKey),this.session,requestId);const remaining=lease.validUntil-lease.issuedAt-(this.monotonic()-started);if(remaining<=0)throw new Error('인증이 만료되었습니다. 다시 시도하세요.');this.lease=lease;this.deadline=this.monotonic()+remaining;this.state={mode:'licensed',allowed:true,message:'인증 완료 · 이 PC에 등록되었습니다.',licenseId:lease.licenseId,expiresAt:new Date(lease.expiresAt).toISOString()};this.notify(this.status());}
   async refresh(){
     if(this.busy)return this.status();
     if(!this.device?.licenseId){this.notify(this.status());return this.status();}
     this.busy=true;const generation=this.generation,started=this.monotonic();
-    try{const raw=await this.proof('renew');if(generation===this.generation)this.accept(raw,started);}catch(error){if(generation===this.generation)this.fail(error);}finally{this.busy=false;}return this.status();
+    try{const raw=await this.proof('renew');if(generation===this.generation)this.accept(raw.result,started,raw.requestId);}catch(error){if(generation===this.generation)this.fail(error);}finally{this.busy=false;}return this.status();
   }
   async deactivate(){
     if(this.busy)throw new Error('인증 처리 중입니다.');this.busy=true;

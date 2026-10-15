@@ -28,13 +28,14 @@ describe('license terms, binding and immutable expiry',()=>{
   });
   test('one PC/session, transfer cooldown, customer/admin release, expiry, extension and audit',()=>{
     const key=keys(),a=keys(),b=keys();let now=base;const store=new LicenseStore(':memory:',key.privateKey,()=>now),item=store.issue(3,1,'customer').rows[0];
-    const req=(action:LicenseRequest['action'],who=a,sessionId='11111111-1111-4111-8111-111111111111'):LicenseRequest=>({action,publicKey:who.publicKey,sessionId,nonce:'a'.repeat(48),code:item.code,licenseId:item.id});
+    const req=(action:LicenseRequest['action'],who=a,sessionId='11111111-1111-4111-8111-111111111111'):LicenseRequest=>({action,publicKey:who.publicKey,sessionId,requestId:randomUUID(),nonce:'a'.repeat(48),code:item.code,licenseId:item.id});
     try{
-      const first=store.apply(req('activate'));const lease=verifyLease(first,key.publicKey,deviceId(a.publicKey),req('activate').sessionId);expect(lease.expiresAt).toBe(addMonthsKorea(base,3));
+      const firstRequest=req('activate'),first=store.apply(firstRequest);const lease=verifyLease(first,key.publicKey,deviceId(a.publicKey),firstRequest.sessionId,firstRequest.requestId);expect(lease.expiresAt).toBe(addMonthsKorea(base,3));
+      expect(()=>verifyLease(first,key.publicKey,deviceId(a.publicKey),firstRequest.sessionId,randomUUID())).toThrow();
       expect(()=>store.apply(req('activate',b))).toThrow('다른 PC');expect(()=>store.apply(req('activate',a,randomUUID()))).toThrow('이미 실행');
       store.apply(req('release'));expect(store.list()[0].device).toBe(deviceId(a.publicKey));store.apply(req('activate',a));
       store.apply(req('deactivate'));expect(()=>store.apply(req('activate',b))).toThrow('최대 2분');now+=120001;
-      const moved=store.apply(req('activate',b));expect(verifyLease(moved,key.publicKey,deviceId(b.publicKey),req('activate').sessionId).expiresAt).toBe(lease.expiresAt);expect(()=>store.apply(req('renew',a))).toThrow('다른 PC');
+      const moveRequest=req('activate',b),moved=store.apply(moveRequest);expect(verifyLease(moved,key.publicKey,deviceId(b.publicKey),moveRequest.sessionId,moveRequest.requestId).expiresAt).toBe(lease.expiresAt);expect(()=>store.apply(req('renew',a))).toThrow('다른 PC');
       store.manage(item.id,'reset');expect(()=>store.apply(req('renew',b))).toThrow('해제');now+=120001;store.apply(req('activate',a));
       store.manage(item.id,'extend',2);expect(store.list()[0].expires).toBe(addMonthsKorea(lease.expiresAt,2));store.manage(item.id,'block');expect(()=>store.apply(req('renew'))).toThrow('차단');
       store.manage(item.id,'unblock');now=Number(store.list()[0].expires);expect(()=>store.apply(req('renew'))).toThrow('만료');store.manage(item.id,'extend',12);expect(store.list()[0].expires).toBe(addMonthsKorea(now,12));
@@ -45,7 +46,7 @@ describe('license terms, binding and immutable expiry',()=>{
     const key=keys();expect(()=>checkConfig({url:'http://public.example',publicKey:key.publicKey})).toThrow();expect(()=>checkConfig({url:'https://user:pass@example.com/',publicKey:key.publicKey})).toThrow();
     expect(()=>checkConfig({url:'https://license.example.com',publicKey:key.privateKey})).toThrow('공개 키');
     const store=new LicenseStore(':memory:',key.privateKey,()=>base),item=store.issue(1,1,'').rows[0],a=keys(),sessionId=randomUUID();
-    try{const raw=store.apply({action:'activate',publicKey:a.publicKey,sessionId,nonce:'a'.repeat(48),code:item.code}) as {lease:{expiresAt:number};signature:string};raw.lease.expiresAt+=999999;expect(()=>verifyLease(raw,key.publicKey,deviceId(a.publicKey),sessionId)).toThrow();}finally{store.close();}
+    try{const requestId=randomUUID(),raw=store.apply({action:'activate',publicKey:a.publicKey,sessionId,requestId,nonce:'a'.repeat(48),code:item.code}) as {lease:{expiresAt:number};signature:string};raw.lease.expiresAt+=999999;expect(()=>verifyLease(raw,key.publicKey,deviceId(a.publicKey),sessionId,requestId)).toThrow();}finally{store.close();}
   });
 });
 test('real HTTP admin auth/CSRF, signed nonce replay rejection, protected client restart, copy denial and fail-closed refresh',async()=>{
@@ -60,7 +61,7 @@ test('real HTTP admin auth/CSRF, signed nonce replay rejection, protected client
     expect((await api('/admin/issue',{months:13,count:1,customer:''})).response.status).toBe(400);
     const issued=(await api('/admin/issue',{months:12,count:1,customer:'test'})).data.rows[0];
     const aKey=keys(),nonce=(await api('/v1/challenge',{publicKey:aKey.publicKey,action:'activate'})).data.nonce;
-    const proof=signedRequest({action:'activate',nonce,publicKey:aKey.publicKey,sessionId:randomUUID(),code:issued.code},aKey.privateKey);
+    const proof=signedRequest({action:'activate',nonce,requestId:randomUUID(),publicKey:aKey.publicKey,sessionId:randomUUID(),code:issued.code},aKey.privateKey);
     expect((await api('/v1/activate',proof)).response.status).toBe(200);expect((await api('/v1/activate',proof)).response.status).toBe(403);
     await api('/admin/manage',{id:issued.id,action:'reset'});now+=120001;
     const encrypted=vault(),aPath=join(directory,'a.dat'),a=new LicenseClient(config,aPath,encrypted,()=>{});expect((await a.activate(issued.code)).allowed).toBe(true);

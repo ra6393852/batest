@@ -47,6 +47,6 @@ export class LicenseStore {
     if(!row.device)this.audit(id,'device-register');
     const validUntil=Math.min(now+120000,expires!);
     this.db.prepare('UPDATE licenses SET device=?,session=?,session_until=?,last_seen=? WHERE id=?').run(device,input.sessionId,validUntil,now,id);
-    return signLease({licenseId:id,deviceId:device,sessionId:input.sessionId,issuedAt:now,validUntil,expiresAt:expires!},this.signingKey);
+    return signLease({licenseId:id,deviceId:device,sessionId:input.sessionId,requestId:input.requestId,issuedAt:now,validUntil,expiresAt:expires!},this.signingKey);
   });}
 }

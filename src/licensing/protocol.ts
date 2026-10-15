@@ -5,7 +5,8 @@ export type LicenseConfig=z.infer<typeof serverConfigSchema>;
 export function checkConfig(raw:unknown):LicenseConfig {
   const config=serverConfigSchema.parse(raw),url=new URL(config.url);
   if(url.username||url.password||url.search||url.hash||url.pathname!=='/'||!(url.protocol==='https:'||(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname))))throw new Error('HTTPS 인증 서버 주소가 필요합니다.');
-  if(createPublicKey(config.publicKey).asymmetricKeyType!=='ed25519')throw new Error('Ed25519 공개 키가 필요합니다.');
+  const key=createPublicKey(config.publicKey);
+  if(key.asymmetricKeyType!=='ed25519'||config.publicKey.replace(/\r\n/g,'\n').trim()!==key.export({format:'pem',type:'spki'}).toString().trim())throw new Error('Ed25519 공개 키만 사용할 수 있습니다. 개인 키는 넣지 마세요.');
   return {...config,url:url.origin};
 }
 export const actions=['activate','renew','deactivate','release'] as const;

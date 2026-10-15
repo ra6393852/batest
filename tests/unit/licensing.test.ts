@@ -43,6 +43,7 @@ describe('license terms, binding and immutable expiry',()=>{
   });
   test('tampered server signatures and insecure server config are rejected',()=>{
     const key=keys();expect(()=>checkConfig({url:'http://public.example',publicKey:key.publicKey})).toThrow();expect(()=>checkConfig({url:'https://user:pass@example.com/',publicKey:key.publicKey})).toThrow();
+    expect(()=>checkConfig({url:'https://license.example.com',publicKey:key.privateKey})).toThrow('공개 키');
     const store=new LicenseStore(':memory:',key.privateKey,()=>base),item=store.issue(1,1,'').rows[0],a=keys(),sessionId=randomUUID();
     try{const raw=store.apply({action:'activate',publicKey:a.publicKey,sessionId,nonce:'a'.repeat(48),code:item.code}) as {lease:{expiresAt:number};signature:string};raw.lease.expiresAt+=999999;expect(()=>verifyLease(raw,key.publicKey,deviceId(a.publicKey),sessionId)).toThrow();}finally{store.close();}
   });

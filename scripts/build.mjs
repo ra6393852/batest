@@ -6,7 +6,8 @@ import {createPublicKey} from 'node:crypto';
 let licenseConfig=null;
 if(process.env.LICENSE_CONFIG_FILE){
   licenseConfig=JSON.parse(await readFile(process.env.LICENSE_CONFIG_FILE,'utf8'));const url=new URL(licenseConfig.url);
-  if(Object.keys(licenseConfig).sort().join(',')!=='publicKey,url'||url.username||url.password||url.hash||url.search||url.pathname!=='/'||!(url.protocol==='https:'||(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))||createPublicKey(licenseConfig.publicKey).asymmetricKeyType!=='ed25519')throw Error('Invalid public license config');
+  const key=createPublicKey(licenseConfig.publicKey);
+  if(Object.keys(licenseConfig).sort().join(',')!=='publicKey,url'||url.username||url.password||url.hash||url.search||url.pathname!=='/'||!(url.protocol==='https:'||(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))||key.asymmetricKeyType!=='ed25519'||licenseConfig.publicKey.replace(/\r\n/g,'\n').trim()!==key.export({format:'pem',type:'spki'}).toString().trim())throw Error('Invalid public license config: only public keys are permitted');
   licenseConfig.url=url.origin;
 }
 if(process.env.REQUIRE_LICENSE_BUILD==='1'&&!licenseConfig)throw Error('판매용 빌드에는 LICENSE_CONFIG_FILE이 필요합니다.');

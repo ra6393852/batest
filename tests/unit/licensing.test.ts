@@ -69,6 +69,9 @@ test('real HTTP admin auth/CSRF, signed nonce replay rejection, protected client
     await reopened.deactivate();expect(reopened.status().allowed).toBe(false);now+=120001;expect((await b.activate(issued.code)).allowed).toBe(true);
     await api('/admin/manage',{id:issued.id,action:'block'});expect((await b.refresh()).allowed).toBe(false);expect(b.status().message).toContain('차단');expect(()=>b.require()).toThrow();
     await api('/admin/manage',{id:issued.id,action:'unblock'});now+=120001;expect((await b.activate(issued.code)).allowed).toBe(true);
+    const nextPassword=randomBytes(24).toString('hex');expect((await api('/admin/password',{current:password,password:nextPassword})).response.status).toBe(200);
+    expect((await api('/admin/licenses')).response.status).toBe(401);expect((await api('/admin/login',{password})).response.status).toBe(401);
+    expect((await api('/admin/login',{password:nextPassword})).response.status).toBe(200);expect(readSettings(directory).publicKey).toBe(settings.publicKey);
     await new Promise<void>(resolve=>server.close(()=>resolve()));expect((await b.refresh()).allowed).toBe(false);expect(()=>b.require()).toThrow();
   }finally{if(server.listening)await new Promise<void>(resolve=>server.close(()=>resolve()));store.close();rmSync(directory,{recursive:true,force:true});}
 });

@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 test('customer build pins server: registration, no password bypass, PC denial, release, restart, extend, block and expiry',async()=>{
   test.setTimeout(120000);
   const info=JSON.parse(readFileSync(process.env.LICENSE_E2E_INFO!,'utf8')) as {url:string;password:string;item:{id:string;code:string};clockFile:string};
-  let cookie='';const admin=async(path:string,data?:unknown)=>{const response=await fetch(info.url+'/admin/'+path,{method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:info.url,Cookie:cookie},...(data===undefined?{}:{body:JSON.stringify(data)})});if(response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie')!.split(';')[0];expect(response.ok).toBe(true);return response.json();};
+  let cookie='';const admin=async(path:string,data?:unknown)=>{const response=await fetch(info.url+'/admin/'+path,{method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:info.url,Cookie:cookie},...(data===undefined?{}:{body:JSON.stringify(data)})});if(response.headers.get('set-cookie'))cookie=response.headers.get('set-cookie')!.split(';')[0];const result=await response.json();expect(response.ok,`${response.status}:${result.error??''}`).toBe(true);return result;};
   const advance=(ms:number)=>writeFileSync(info.clockFile,String(Number(readFileSync(info.clockFile,'utf8'))+ms));
   const aDir=mkdtempSync(join(tmpdir(),'baccarat-customer-a-')),bDir=mkdtempSync(join(tmpdir(),'baccarat-customer-b-'));
   const launch=(folder:string)=>electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`],env:{...process.env,DESKTOP_TEST_PASSWORD:'fixture-cannot-bypass-license',LICENSE_CONFIG_FILE:'invalid-runtime-override'}});
@@ -31,6 +31,8 @@ test('customer build pins server: registration, no password bypass, PC denial, r
     await admin('manage',{id:info.item.id,action:'unblock'});await admin('manage',{id:info.item.id,action:'reset'});advance(120001);
     await page.getByLabel('이용 코드',{exact:true}).fill(info.item.code);await page.getByRole('button',{name:'이 PC에 등록',exact:true}).click();await expect(page.getByTestId('total-results')).toHaveText('3');
     advance(500*86400000);await page.evaluate(()=>window.analyzer.refreshLicense());await expect(page.getByTestId('license-message')).toContainText('만료');
+    // Advancing the server clock also expires the one-hour admin login.
+    await admin('login',{password:info.password});
     await admin('manage',{id:info.item.id,action:'extend',months:1});advance(120001);await page.getByRole('button',{name:'기존 등록 다시 확인',exact:true}).click();await expect(page.getByTestId('total-results')).toHaveText('3');
   }finally{await a?.close();await b?.close();rmSync(aDir,{recursive:true,force:true});rmSync(bDir,{recursive:true,force:true});}
 });

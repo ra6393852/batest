@@ -1,0 +1,116 @@
+{
+  "name": "baccarat-live-analyzer",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Read-only baccarat result recording and statistical comparison",
+  "author": "Baccarat Live Analyzer contributors",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "setup:electron": "node node_modules/electron/install.js",
+    "typecheck": "tsc --noEmit",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:desktop": "npm run build && playwright test",
+    "dist:win": "npm run build && electron-builder --win zip --x64",
+    "pack:linux": "npm run build && electron-builder --linux --dir",
+    "license:build": "node scripts/build-license-server.mjs",
+    "license:init": "node dist/license-server/server.cjs init",
+    "license:start": "node dist/license-server/server.cjs start",
+    "dist:customer": "node scripts/build-customer.mjs",
+    "test:licensed": "node scripts/test-licensed.mjs"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/kor": "1.0.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sql.js": "1.14.2",
+    "tesseract.js": "7.0.0",
+    "ws": "8.22.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@types/chrome": "0.3.5",
+    "@types/jsdom": "30.0.0",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@types/sql.js": "1.4.9",
+    "@types/ws": "8.18.2",
+    "@vitejs/plugin-react": "5.1.4",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.27.3",
+    "jsdom": "28.0.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.1",
+    "vitest": "4.0.18"
+  },
+  "build": {
+    "appId": "com.baccarat.liveanalyzer",
+    "productName": "Baccarat Live Analyzer",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!dist/license-server/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Review.${ext}",
+      "extraFiles": [
+        {
+          "from": "dist/portable-readme.txt",
+          "to": "사용방법.txt"
+        },
+        {
+          "from": "packaging/license-manual.txt",
+          "to": "라이선스-등록-해제-판매설명서.txt"
+        }
+      ]
+    },
+    "extraResources": [
+      {
+        "from": "node_modules/@tesseract.js-data/eng/4.0.0",
+        "to": "ocr/eng"
+      },
+      {
+        "from": "node_modules/tesseract.js-core",
+        "to": "ocr/node_modules/tesseract.js-core"
+      },
+      {
+        "from": "dist/main/ocr-worker.cjs",
+        "to": "ocr/worker.cjs"
+      },
+      {
+        "from": "dist/extension",
+        "to": "chrome-extension"
+      },
+      {
+        "from": "dist/ocr-langs",
+        "to": "ocr/langs"
+      },
+      {
+        "from": "dist/main/board-worker.cjs",
+        "to": "analysis/board-worker.cjs"
+      }
+    ]
+  }
+}

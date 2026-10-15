@@ -1,0 +1,47 @@
+# Linux 클라우드 개발·검증
+
+/workspace/batest의 기존 체크아웃을 사용합니다. 별도의 Git worktree를 만들지 않습니다.
+
+```bash
+bash scripts/setup-cloud.sh
+bash scripts/test-cloud.sh
+```
+
+Node.js 24, 고정 lockfile의 npm ci, 공식 체크섬/TLS를 유지하는 Electron 다운로드와 TypeScript/React 빌드를 사용합니다. 캐시는 `/workspace/.cache`입니다. 정상 의존성은 불필요하게 재설치하지 않습니다. setup 스크립트는 필요한 경우 서명된 Debian trixie Xvfb 패키지를 캐시 안에 풀며 시스템 경로를 수정하지 않습니다.
+
+0.5.8 검증은 단위111개와 Linux Electron9개 대상입니다. 실제 OS 클립보드, 숫자 판독/미확인 점수 수정, 4회차 고정 예측/O/X, SQLite v1→v2 이관 및 보존, 원본 확대를 검사합니다. 게임 창의 native desktopCapturer로 방 이름/회차 텍스트가 없는 작은 숫자 그림판을 2배 판독하고 쌍 표시가 있는22→23→24개 결과를 각각5초 이내 저장/채점, 다른 그림판의 새 기록 분리, 빈 그림판 초기화, 100%/200% 미리보기 및 이미지/창 드래그를 검사합니다. 캡처 fixture는 로컬 BrowserWindow이며 실제 Evolution 화면이 아닙니다. Windows CI는 Chrome 확장 내부 테스트를 포함해 소스와 무설치 EXE에서 각각10개를 실행합니다.
+
+창 열거/캡처 검사에는 Xvfb와 X11 창 관리자 xfwm4, dbus-run-session을 사용합니다. 이 환경에는 xfwm4/dbus가 준비되어 있습니다. 테스트 스크립트는 별도 DISPLAY와 DBus 세션을 시작·종료하고 설정 파일을 `/workspace/.cache/baccarat-test-config`에 둡니다. 사용자 HOME을 변경하지 않습니다. 다른 Linux 이미지에서는 이 런타임이 있는지 확인하세요. 프로세스는 환경 스냅샷에 남지 않습니다.
+
+컨테이너의 중첩 사용자 네임스페이스 제한 때문에 Chromium의 Linux OS sandbox를 시작할 수 없습니다. **로컬 fixture 전용** 테스트만 ALLOW_UNSANDBOXED_FIXTURE_TEST=1 및 --smoke-test/--no-sandbox로 실행합니다. 이 모드는 실제 사이트 탐색을 거절하고 임시 DB/세션을 사용합니다. 일반 앱의 sandbox/TLS/서명 검증을 해제하지 않습니다.
+
+기본 사용은 Chrome에서 직접 게임 실행 → 게임 창 선택 → 자동 가져오기 시작입니다. 1초마다 선택한 창의 왼쪽 아래 이미지를 PC 안에서 가져오고 OCR은 별도로 순차 처리합니다. 기본 Chrome 연결 서버/확장 설치는 필요 없습니다. 기존 연결 모듈은 --enable-chrome-bridge 개발 실행에만 사용합니다. 시스템 Chromium 확장 시작/다운로드 제약 때문에 Chrome 확장 통합 테스트는 Windows CI에서 실행하며 Linux 통과로 보고하지 않습니다.
+
+배포는 Windows 무설치 ZIP 전체입니다. EXE와 resources를 함께 유지하고 기존 userData SQLite를 보존합니다. 설치 파일·프로토콜 자동 등록을 포함하지 않습니다. npm run dist:win은 release/Baccarat-Live-Analyzer-0.5.8-x64-Portable.zip을 만들며 CI가 압축 해제한 실제 EXE를 테스트한 뒤 폴더 전체를 아티팩트로 제공합니다.
+
+자동 캡처는 제공된 Evolution 배치 기준의 창 왼쪽42%/아래45%입니다. 방 이름/전체 결과 수는 읽지 않습니다. 캡처 BGRA 픽셀을 정확히 2배 복제하여 판독하고 그림판 부분만 원본/2배 PNG로 미리보기 합니다. 이미지·민감한 세션 정보는 저장/로그하지 않으며 숫자 OCR은 PC 내 영문 모델을 사용합니다. 기록 번호는 보이는 그림판의 상대 순서이며 전체 슈 복원이 아닙니다. 그림판 변경은 새 그룹으로 분리하되, 서로 다른 방의 동일한 그림판은 새 그림판 기록 버튼으로 구분합니다. 화면 보호/최소화/다른 배치와 실제 사이트 판독은 미검증입니다. 자동 베팅·접근 정책 우회 기능은 없습니다.
+
+0.5.3 승패 경로는 숫자 OCR을 await하지 않습니다. background-scores.ts는 실행1개/최신대기1개 큐로 점수를 처리하며 개별 숫자 재시도를 생략합니다. 이미 저장된 승패에 확실한 점수만 추가하고 기존 예측/채점을 바꾸지 않습니다. 작은 분리된 모서리 쌍 성분은 색 투표에서 제외하지만 본체 충돌과92% 기준은 유지합니다. frame-color.test.ts의43개 재현 이미지와 background-scores.test.ts의 끝나지 않는 숫자 작업/취소/예측 불변성을 검사합니다.
+
+0.5.4는 실제 실행 버전을captureInfo의appVersion으로 제공하고, 중복 실행으로 새 버전을 시작하지 못하면 종료 안내를 표시합니다. smoke중복실행은 콘솔만 출력해 같은 분기/문구를 검사합니다. 판독 대기 또는 현재room/shoe/rounds와snapshot이 다르면 이전 기준 제목/선택을 숨깁니다.33개 사진 재현과1→보류33→확정33→34 자동 갱신/채점도 검사합니다.
+
+0.5.5는ink-color.ts의색상각/채도로초록의청록음영을파랑과분리합니다. 숫자형30개/T8의기존88.12%보류를재현하고 진짜색충돌/중성글자보류를검사합니다. board-reader.ts/board-worker.ts는별도Node스레드에서2배판독·영역재탐색·변경없는픽셀캐시를처리합니다. 워커는실제resources/analysis/board-worker.cjs로패키징해ASAR밖에서실행합니다. board-reader.test.ts는이벤트루프응답,캐시0픽셀재판독,변경시전체의절반미만픽셀판독,위치이동/초기화/오류복구를검사합니다. native캡처는초록음영·항상보이는모니터·캐시의새결과채점·새그림판초기화후복구도검사합니다. 사용자원본픽셀/Evolution화면은직접검증하지못했습니다.
+
+0.5.6 UI 검사는 최소 지원 창 1000×700에서 모니터와 예측표의 좌우 배치, 전체 이미지 맞춤, 별도 패널 세로 스크롤 제거, 페이지 스크롤 중 모니터 유지와 새 결과 이후 23→24→25→26→27→28 단일 표 순서를 확인합니다. 별도의 최근 채점표는 제거하고 최근 7회/전체 보기로 같은 표에 표시합니다. 판독 대기에는 저장된 적중률만 명시적으로 보여주고 이전 예상 답은 숨깁니다. 자동 캡처·판독·예측·채점 알고리즘은 변경하지 않습니다.
+
+0.5.7은 시작 암호와 과거 검증을 추가합니다. access-helper.ts가 임시 fixture 암호를 만들고 기존 데스크톱 검사도 실제 로그인 후 실행합니다. --smoke-test는 os.tmpdir 아래 실제 baccarat- 경로만 사용하며 일반 프로필과 시작 암호를 우회하지 않습니다. access.spec.ts는 잠금 전 주요 IPC 거절·잘못된 암호·정상 해제·재실행 재잠금을 검사합니다. 원래 관리자 암호를 코드·CI·로그·환경 설정 초안에 넣지 않습니다.
+
+history-review.ts는 각 회차의 결과와 점수를 가리고 앞선 연속 구간으로만 과거 검증합니다. 실시간 settlements와 별개이며 1회차는 이론 기준입니다. store.ts의 변경 시 무효화 캐시와 외부 수정 격리, capture-updates.ts의 변하지 않은 PNG 생략도 검사합니다. native 캡처 화면 배치 검사는 실시간 보기에서 수행하고, 클립보드 검사는 1회차부터30회차까지의 단일 표·과거 검증 표시·실시간 적중률 불변을 검사합니다.
+
+0.5.8은 판독 대기 시 과거 행 유지, 기준/보기/묶음/추정치 공간 유지, 브라우저 스크롤 앵커 보정 해제입니다. native 캡처 검사는 24회까지 저장한 뒤 전체 보기를 스크롤하고, 25번째 결과의 색 충돌 보류와 정상 25회 복귀 때 페이지 scrollY가 정확히 유지되는지 확인합니다. 대기 중 과거 행은 남고 미래 예상 답은 없어야 합니다. 첫 원이 B여도 반대색을 칠하도록 모호한 fixture도 바로잡았습니다. 테스트 추가에 따라 이전 방 보존 결과는 25개입니다. 판매 라이선스는 문서 설계만 있으며 서버/실제 코드 발급은 미구현입니다.
+# 0.6.0 라이선스 개발 추가 사항
+
+기존 체크아웃과 캐시를 그대로 사용합니다. 서버 번들은 Node.js 24 내장 SQLite를 사용하며 새 npm 의존성은 없습니다. `npm run build`는 검토용 앱과 `dist/license-server/server.cjs`를 만듭니다. `npm test`에는 1~12개월 계산, 10,000개 발급, 기기·세션 제한, HTTP 관리자/서명/재생 거절, 암호화 인증 저장소/재시작/복사/장애 검사가 포함됩니다.
+
+Linux에서는 `bash scripts/test-cloud.sh`로 기존 분석기를 검증합니다. Windows에서는 `npm run test:licensed`와 `npm run test:licensed -- --package`로 임시 실제 서버에 고정된 Customer 소스/EXE, DPAPI, 등록·해제·연장·차단·만료, 관리자 브라우저를 검사합니다. 검사가 끝나면 Review 빌드를 복원합니다. 실제 고객용은 `npm run dist:customer -- 공개설정.json`이며 HTTPS 주소를 요구합니다. 개인 키/고객 코드/운영 암호는 설정 초안이나 Git에 넣지 않습니다.
+
+로컬 서버 검토는 `npm run license:init -- --url http://127.0.0.1:4380 --data local-test-data`와 `npm run license:start -- --data local-test-data --port 4380`입니다. 암호는 터미널에서 숨김 입력합니다. `/health`의 `{ok:true}`와 실제 코드 발급/등록으로 기능을 확인하세요. 프로세스는 다음 환경에 유지되지 않으므로 필요할 때 다시 시작합니다. 공개 서버·DNS·TLS는 별도 배포가 필요합니다. 환경 온보딩 UI에 localhost 미리보기 링크를 만들지 않습니다.
+
+판매자 관리 수정 검증은 `npm run license:build` 후 `npx --no-install playwright test --config playwright.server.config.ts`입니다. 임시 SQLite/키/관리자 암호만 사용합니다. Linux 컨테이너에서 이미 설치된 Chromium을 사용할 때만 `SERVER_TEST_BROWSER_PATH=/usr/bin/chromium`을 지정합니다. 별도 Seller server update CI가 Windows 실제 브라우저의 연장·취소·PC 해제·재발급/복사·오류·세션 만료를 검증하고 server.cjs와 업데이트 TXT만 묶어 제공합니다. 서버 업데이트는 기존 license-data를 보존하며 공개 주소/서명 키가 같으면 Customer 앱을 재빌드하지 않습니다.
+
+`packaging/customer-public.json`의 공개 주소만 바뀌면 Customer endpoint rebuild CI가 외부 health를 먼저 확인하고 실제 고객 ZIP/EXE의 코드 등록 화면·인증 전 분석 차단을 검사합니다. 앱/서버 코드는 직전 전체 Windows CI 결과와 구분해 보고합니다. 서버 주소는 빌드 시 고정되므로 임시 터널 주소 변경 후에는 새 전체 폴더 ZIP을 사용합니다. 같은 서버의 공개 키와 license-data를 유지하면 기존 이용권·PC 등록·만료일은 그대로입니다. 실제 이용 코드로 CI 기기를 등록하지 않습니다.

@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Baccarat Analyzer · Chrome 연결",
+  "version": "0.6.0",
+  "description": "허용한 바카라 탭의 결과만 로컬 분석기에 전달합니다. 자동 베팅과 로그인 정보 수집 기능은 없습니다.",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "optional_permissions": [
+    "webNavigation"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "분석기 연결"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' ws://127.0.0.1:38741"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArRBHMGko/M7YQUB0/EJDH2ZIsCYp6UpEn44cJrXfz6pfuPUr7ZAJd4gmYIdFkwLQKcQVNdZfUZVUVz9kDPWKiDA3v5W1wy8AtXlHgnufRizbpmgIsZVqXgfGZswZ+U7TgKua7rBwey8RoHWZLw3OeutMXTKJvY6Vcjc/Is107OrpuuaGl/G29YmQ3Sl16Tu/x80SGIjTsCjusPZyv+Nhzjr7Y0c3W+197gMUWI+OHDU8r8tXbmtPfBHGBeBLuVZIHFkIKayycUvhdO6l/NImv8KJr2YeIOcaO1+LNYFb5sPXhTcXZ4KSqf4x44xwn7BB5j3Z0tg6noHBqrNWM5TAJQIDAQAB"
+}

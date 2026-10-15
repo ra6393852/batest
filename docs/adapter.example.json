@@ -1,0 +1,12 @@
+{
+  "id": "example-not-a-verified-site-adapter",
+  "hosts": ["provider.example"],
+  "roomSelector": "[data-room-id]",
+  "roomIdAttribute": "data-room-id",
+  "shoeSelector": "[data-shoe-id]",
+  "shoeIdAttribute": "data-shoe-id",
+  "rowSelector": "[data-result-round]",
+  "roundAttribute": "data-result-round",
+  "outcomeAttribute": "data-outcome",
+  "confidence": 0.8
+}

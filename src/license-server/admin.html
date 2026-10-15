@@ -1,0 +1,77 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>판매자 라이선스 관리</title>
+<style>
+body{font:17px system-ui;background:#0b1220;color:#e5efff;max-width:1400px;margin:30px auto;padding:16px}section{background:#142136;padding:20px;margin:18px 0;border-radius:12px}input,select,button{font:inherit;padding:10px;margin:5px;border-radius:6px}button{cursor:pointer;background:#48d4b7;border:0}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #456;white-space:pre-line}small{display:block}#message,#manage-message{white-space:pre-wrap;color:#ffe38a}button:disabled{opacity:.5}#codes,#history{white-space:pre-wrap;overflow:auto;max-height:260px}dialog{background:#142136;color:#e5efff;border:1px solid #48d4b7;border-radius:12px;width:min(760px,90vw);max-height:85vh;box-sizing:border-box;padding:24px}dialog::backdrop{background:#000a}dialog h2{margin-top:0}#manage-description{white-space:pre-wrap}#replacement-code{box-sizing:border-box;width:100%;margin:0;font:20px monospace}#manage-cancel{background:#b9cbe0}#copy-code{margin-left:0}
+</style>
+<h1>판매자 라이선스 관리</h1><p>고객에게는 프로그램과 이용 코드만 전달하세요. 이 관리자 주소·암호·서버 개인 키는 전달하지 않습니다.</p><p id="message" role="status"></p>
+<section id="login"><form id="login-form"><label>관리자 암호 <input id="password" type="password" required maxlength="128" autocomplete="current-password"></label><button>로그인</button></form></section>
+<div id="dashboard" hidden>
+<button id="logout">로그아웃</button>
+<section><h2>코드 발급 · 1~12개월</h2><form id="issue-form"><label>이용 기간 <select id="months" class="months"></select></label><label>수량 <input id="count" type="number" min="1" max="10000" value="1" required></label><label>고객/배치 메모 <input id="customer" maxlength="120"></label><button>코드 생성</button></form><p>이용 코드는 BLA-로 시작합니다. 사용 기간은 고객이 처음 등록한 날부터 시작합니다. 코드를 잃어도 아래 고객 목록에서 [코드 재발급]으로 새 코드로 교체할 수 있습니다.</p><button id="download" disabled>발급 CSV 다운로드</button><pre id="codes"></pre></section>
+<section><h2>고객·PC 등록 관리</h2><form id="search-form"><label>고객 메모 / 이용권 ID / 코드 끝 8자리 <input id="query" maxlength="120"></label><button>검색</button></form><label>연장 기간 <select id="extend-months" class="months"></select></label><p>관리 버튼을 누르면 확인창에서 처리 내용과 결과를 볼 수 있습니다. 미사용 이용권은 최초 등록 후 연장할 수 있습니다. PC 등록 해제와 코드 재발급은 남은 이용 기간을 보존합니다. PC 이동은 기존 인증 종료까지 최대 2분 기다릴 수 있습니다.</p><div style="overflow:auto"><table><thead><tr><th>고객·이용권</th><th>최초 발급 기간·상태</th><th>PC 등록</th><th>만료일</th><th>관리</th></tr></thead><tbody id="rows"></tbody></table></div><button id="previous">이전 100개</button><button id="next">다음 100개</button><p id="page"></p></section>
+<section><h2>관리자 암호 변경</h2><form id="password-form"><label>현재 암호 <input id="current-password" type="password" required maxlength="128" autocomplete="current-password"></label><label>새 암호(12~128자) <input id="new-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><button>암호 변경 후 로그아웃</button></form></section>
+</div>
+<dialog id="manage-dialog" aria-labelledby="manage-title" aria-describedby="manage-description"><form id="manage-form">
+<h2 id="manage-title"></h2><p id="manage-description"></p><p id="manage-message" role="status" aria-live="polite"></p>
+<div id="replacement" hidden><label for="replacement-code">손님에게 전달할 새 이용 코드</label><input id="replacement-code" readonly spellcheck="false"><button type="button" id="copy-code">새 코드 복사</button><p>위 코드 전체만 전달하세요. 이전 코드는 등록에 사용할 수 없습니다. 다시 잃어도 같은 이용권에서 재발급할 수 있습니다.</p></div>
+<pre id="history" hidden></pre><button type="button" id="manage-cancel">취소</button><button type="submit" id="manage-confirm">확인</button>
+</form></dialog>
+<script src="/admin.js" defer></script>
+<script type="text/plain"><!--SCRIPT-->
+const $=id=>document.getElementById(id);let offset=0,issued=[],busy=false,pending=null;
+const titles={extend:'기간 연장',reset:'PC 등록 해제',block:'사용 차단',unblock:'차단 해제',reissue:'코드 재발급',history:'변경 이력'};
+const states={unused:'미사용',active:'사용 중',expired:'만료',blocked:'차단'};
+const date=value=>value?new Date(value).toLocaleString('ko-KR'):'최초 등록 대기';
+for(const select of document.querySelectorAll('.months'))for(let i=1;i<=12;i++){const option=document.createElement('option');option.value=i;option.textContent=i+'개월';select.append(option);}
+function renderCodes(){$('codes').textContent=issued.map(r=>r.code+' / '+r.months+'개월 / '+r.id).join('\n');$('download').disabled=busy||!issued.length;}
+async function api(path,data){
+  let response;try{response=await fetch('/admin/'+path,{method:data===undefined?'GET':'POST',credentials:'same-origin',headers:data===undefined?{}:{'Content-Type':'application/json'},...(data===undefined?{}:{body:JSON.stringify(data)})});}catch{throw Error('서버에 연결하지 못했습니다. 서버 창을 확인한 뒤 다시 시도하세요.');}
+  let result;try{result=await response.json();}catch{throw Error('서버 응답을 확인하지 못했습니다. 서버 연결을 확인하세요.');}
+  if(!response.ok){if(response.status===401){pending=null;$('manage-dialog').close();$('dashboard').hidden=true;$('login').hidden=false;$('password').focus();}throw Error(result.message||'요청 실패');}return result;
+}
+async function act(fn){
+  if(busy)return;busy=true;$('message').textContent='처리 중…';if($('manage-dialog').open)$('manage-message').textContent='처리 중…';for(const b of document.querySelectorAll('button'))b.disabled=true;
+  try{const message=await fn()||'처리 완료';$('message').textContent=message;if($('manage-dialog').open)$('manage-message').textContent=message;}
+  catch(e){$('message').textContent=e.message;if($('manage-dialog').open)$('manage-message').textContent=e.message;}
+  finally{busy=false;for(const b of document.querySelectorAll('button'))b.disabled=false;$('download').disabled=!issued.length;}
+}
+function cell(row,text){const td=document.createElement('td');td.textContent=text;row.append(td);return td;}
+function openManage(item,action){
+  if(busy)return;pending={id:item.id,action,months:Number($('extend-months').value)};
+  $('manage-title').textContent=titles[action];$('manage-message').textContent='';$('replacement').hidden=true;$('replacement-code').value='';$('copy-code').textContent='새 코드 복사';$('history').hidden=true;$('history').textContent='';$('manage-cancel').textContent='취소';$('manage-confirm').hidden=false;$('manage-confirm').textContent=action==='reissue'?'새 코드 발급':'확인';
+  const descriptions={extend:pending.months+'개월을 추가합니다.\n현재 만료일: '+date(item.expires)+'\n최초 발급 기간 표시는 그대로이며, 처리 후 새 만료일을 표시합니다.',reset:'PC 연결을 해제합니다. 남은 이용 기간은 유지됩니다.\n손님은 같은 코드로 다시 등록할 수 있으며 최대 2분 대기할 수 있습니다.'+(item.device?'':'\n현재는 이미 미등록 상태입니다.'),block:'이용권 사용을 차단합니다. 기간은 그대로이며 차단 해제로 복구할 수 있습니다.',unblock:'차단을 해제합니다. 기존 만료일은 유지됩니다.',reissue:'새 코드로 교체하고 이전 코드는 등록할 수 없게 합니다.\n남은 이용 기간·PC 등록·실행 중인 정상 인증·차단 상태는 유지됩니다.\n발급 후 나타나는 새 코드만 손님에게 전달하세요.',history:'이 이용권의 최근 변경 내역입니다.'};
+  $('manage-description').textContent=(item.customer||'메모 없음')+'\n관리번호: '+item.id+'\n\n'+descriptions[action];
+  if(action==='extend'&&item.activated===null){$('manage-message').textContent='아직 등록되지 않은 이용권입니다. 손님이 처음 등록한 뒤 기간을 연장할 수 있습니다.';$('manage-confirm').hidden=true;}
+  $('manage-dialog').showModal();$('manage-cancel').focus();
+  if(action==='history'){pending=null;$('manage-confirm').hidden=true;$('manage-cancel').textContent='닫기';act(async()=>{$('history').textContent=JSON.stringify((await api('history?id='+item.id)).rows,null,2);$('history').hidden=false;return '변경 이력을 불러왔습니다.';});}
+}
+async function list(){
+  const result=await api('licenses?q='+encodeURIComponent($('query').value)+'&offset='+offset);$('rows').replaceChildren();
+  for(const item of result.rows){const row=document.createElement('tr');row.dataset.licenseId=item.id;cell(row,(item.customer||'메모 없음')+'\n관리번호 '+item.id+'\n코드 끝 '+item.code_hint);cell(row,item.months+'개월 / '+states[item.status]);cell(row,item.device?'등록됨':'미등록');cell(row,date(item.expires));const controls=cell(row,'');
+    for(const action of ['extend','reset','reissue',item.blocked?'unblock':'block','history']){const b=document.createElement('button');b.type='button';b.textContent=titles[action];b.onclick=()=>openManage(item,action);controls.append(b);}$('rows').append(row);
+  }$('page').textContent=(offset+1)+'번째부터 '+result.rows.length+'개 표시';
+}
+$('manage-form').onsubmit=e=>{e.preventDefault();if(!pending||busy)return;const operation=pending;act(async()=>{
+  const result=operation.action==='reissue'?await api('reissue',{id:operation.id}):await api('manage',{id:operation.id,action:operation.action,...(operation.action==='extend'?{months:operation.months}:{})});
+  pending=null;$('manage-confirm').hidden=true;$('manage-cancel').textContent='닫기';$('manage-title').textContent=titles[operation.action]+' 완료';$('manage-description').textContent='관리번호: '+operation.id;
+  let message;
+  if(operation.action==='reissue'){
+    $('replacement-code').value=result.code;$('replacement').hidden=false;issued=issued.filter(r=>r.id!==result.id);issued.push(result);renderCodes();
+    message='새 코드를 발급했습니다. 이전 코드는 무효입니다.\n만료일: '+date(result.expires)+'\nPC 등록: '+(result.registered?'유지됨':'미등록 유지');
+  }else if(operation.action==='extend')message=operation.months+'개월 연장했습니다.\n새 만료일: '+date(result.expires);
+  else if(operation.action==='reset')message='PC 등록을 해제했습니다.\n만료일은 그대로입니다: '+date(result.expires)+'\n다시 등록하기까지 최대 2분 기다릴 수 있습니다.';
+  else message=titles[operation.action]+' 처리했습니다.\n만료일: '+date(result.expires);
+  try{await list();}catch(e){message+='\n변경은 완료했지만 목록 갱신에 실패했습니다: '+e.message;}
+  if(operation.action==='reissue'){$('replacement-code').focus();$('replacement-code').select();}return message;
+});};
+$('manage-cancel').onclick=()=>{if(busy)return;pending=null;$('manage-dialog').close();};
+$('manage-dialog').addEventListener('cancel',e=>{if(busy)e.preventDefault();else pending=null;});
+$('replacement-code').onclick=()=>{$('replacement-code').select();};
+$('copy-code').onclick=async()=>{const input=$('replacement-code');input.focus();input.select();try{await navigator.clipboard.writeText(input.value);$('copy-code').textContent='복사 완료';}catch{$('manage-message').textContent='코드가 선택되었습니다. Ctrl+C를 눌러 복사하세요.';}};
+$('login-form').onsubmit=e=>{e.preventDefault();act(async()=>{await api('login',{password:$('password').value});$('password').value='';$('login').hidden=true;$('dashboard').hidden=false;await list();});};
+$('logout').onclick=()=>act(async()=>{await api('logout',{});location.reload();});
+$('issue-form').onsubmit=e=>{e.preventDefault();act(async()=>{issued=[];renderCodes();const result=await api('issue',{months:Number($('months').value),count:Number($('count').value),customer:$('customer').value});issued=result.rows;renderCodes();offset=0;await list();});};
+$('download').onclick=()=>{const quote=value=>'"'+String(value).replaceAll('"','""')+'"';const csv='\ufefflicense_id,code,months,customer\r\n'+issued.map(r=>[r.id,r.code,r.months,/^[=+@\-\t\r]/.test(r.customer)?"'"+r.customer:r.customer].map(quote).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='발급코드-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('search-form').onsubmit=e=>{e.preventDefault();offset=0;act(list);};$('previous').onclick=()=>{offset=Math.max(0,offset-100);act(list);};$('next').onclick=()=>{offset+=100;act(list);};
+$('password-form').onsubmit=e=>{e.preventDefault();act(async()=>{await api('password',{current:$('current-password').value,password:$('new-password').value});$('password-form').reset();location.reload();});};
+api('licenses').then(()=>{$('login').hidden=true;$('dashboard').hidden=false;return list();}).catch(()=>{});
+<!--ENDSCRIPT--></script></html>

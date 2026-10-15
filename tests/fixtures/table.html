@@ -1,0 +1,11 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"><title>로컬 바카라 수집 테스트</title><style>
+body{font-family:Segoe UI,sans-serif;background:#101827;color:#e5edff;padding:16px;font-size:13px}h1{font-size:18px}button{background:#334c70;color:white;border:0;border-radius:5px;padding:9px;margin:4px;cursor:pointer}#results{display:flex;flex-wrap:wrap;gap:4px;margin-top:16px}#results span{border:1px solid #536c91;border-radius:50%;padding:8px}.note{color:#9bb2d3}
+</style></head><body><h1 data-room-id="demo-alpha">테스트 방 Alpha</h1><p>슈: <b data-shoe-id="demo-shoe-1">demo-shoe-1</b></p><p class="note">실제 사이트가 아닌 로컬 테스트 화면입니다. 첫 6개는 기존 화면 기록으로 가져옵니다.</p>
+<button id="banker">새 결과 B</button><button id="player">새 결과 P</button><button id="tie">새 결과 T</button><button id="switch-room">방 이동</button><button id="new-shoe">새 슈</button><div id="results"></div>
+<script>
+const state=new Map();let room='demo-alpha',shoe=1;
+function key(){return `${room}:${shoe}`}
+function render(){document.querySelector('[data-room-id]').dataset.roomId=room;document.querySelector('[data-room-id]').textContent=room==='demo-alpha'?'테스트 방 Alpha':'테스트 방 Beta';document.querySelector('[data-shoe-id]').dataset.shoeId=`demo-shoe-${shoe}`;document.querySelector('[data-shoe-id]').textContent=`demo-shoe-${shoe}`;document.getElementById('results').replaceChildren();const rows=state.get(key())??['B','P','B','B','T','P'];state.set(key(),rows);rows.forEach((o,i)=>{const el=document.createElement('span');el.dataset.resultRound=String(i+1);el.dataset.outcome=o;el.textContent=o;document.getElementById('results').append(el)})}
+function add(o){state.get(key()).push(o);render()}
+document.getElementById('banker').onclick=()=>add('B');document.getElementById('player').onclick=()=>add('P');document.getElementById('tie').onclick=()=>add('T');document.getElementById('switch-room').onclick=()=>{room=room==='demo-alpha'?'demo-beta':'demo-alpha';render()};document.getElementById('new-shoe').onclick=()=>{shoe++;state.set(key(),[]);render()};render();
+</script><div id="ocr-text" style="margin-top:20px;background:white;color:black;font:bold 40px Arial;padding:20px;width:260px">BANKER</div></body></html>

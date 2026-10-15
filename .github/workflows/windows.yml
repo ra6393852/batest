@@ -74,3 +74,30 @@ jobs:
           name: baccarat-seller-license-server
           path: ${{ runner.temp }}/baccarat-seller-server/**
           if-no-files-found: error
+      - name: Check customer endpoint from an external Windows runner
+        if: hashFiles('packaging/customer-public.json') != ''
+        run: node scripts/check-license-endpoint.mjs packaging/customer-public.json
+      - name: Build configured Customer ZIP
+        if: hashFiles('packaging/customer-public.json') != ''
+        run: npm run dist:customer -- packaging/customer-public.json
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Validate configured Customer EXE without consuming a customer code
+        if: hashFiles('packaging/customer-public.json') != ''
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem release/*Customer*.zip | Select-Object -First 1
+          if (-not $archive) { throw 'Customer ZIP missing' }
+          $customerDir = Join-Path $env:RUNNER_TEMP 'baccarat-customer'
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $customerDir
+          if (Get-ChildItem $customerDir -Recurse -Filter 'server-secrets.json') { throw 'Private server settings included' }
+          $env:DESKTOP_TEST_EXECUTABLE = Join-Path $customerDir 'Baccarat Live Analyzer.exe'
+          $env:CUSTOMER_RELEASE_TEST = '1'
+          npx --no-install playwright test customer-build.spec.ts --reporter=list,github
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('packaging/customer-public.json') != ''
+        with:
+          name: baccarat-windows-customer
+          path: ${{ runner.temp }}/baccarat-customer/**
+          if-no-files-found: error

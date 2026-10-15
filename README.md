@@ -139,3 +139,5 @@ npm run dist:customer -- C:/안전한폴더/license-public.json
 `server-secrets.json`, 서버 DB, 발급 CSV는 고객에게 보내지 않습니다. 인터넷 인증 필수이며 TPM/완전한 크랙 방지/기존 보호 없는 구버전 회수는 구현하지 않습니다. 현재 공개 서버·DNS·TLS·실고객 PC·동시 수천 명 부하는 미검증입니다.
 
 Windows 인증 검사: `npm run test:licensed`, 실제 Customer EXE: `npm run test:licensed -- --package`. 임시 서버 키를 빌드에 넣어 실제 등록·거절·해제·연장·차단·만료를 확인하고 검사가 끝나면 Review 빌드를 복원합니다.
+
+Cloudflare Quick Tunnel의 `*.trycloudflare.com` 주소를 넣으면 `Customer-Trial.zip`으로 만들고 임시 주소/재시작 시 재빌드 안내를 포함합니다. 연결 시험용이며 판매용 고정 주소를 대신하지 않습니다. `packaging/customer-public.json`에 검증한 공개 주소와 공개키만 제공한 경우 Windows CI가 해당 Customer를 추가로 빌드하고, 실제 고객 코드를 사용하지 않는 EXE 시작/잠금 검사를 거쳐 `baccarat-windows-customer` 아티팩트로 제공합니다. 서버 개인 키나 관리자 암호는 이 파일에 넣지 않습니다.

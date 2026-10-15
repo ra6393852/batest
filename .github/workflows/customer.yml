@@ -1,0 +1,46 @@
+name: Customer endpoint rebuild
+on:
+  pull_request:
+    paths:
+      - 'packaging/customer-public.json'
+      - '.github/workflows/customer.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  customer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check seller server from external Windows before building
+        run: node scripts/check-license-endpoint.mjs packaging/customer-public.json
+      - run: npm ci
+      - run: npm run setup:electron
+      - run: npm run typecheck
+      - name: Build Customer with pinned public settings
+        run: npm run dist:customer -- packaging/customer-public.json
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Validate the extracted Customer EXE without consuming a real code
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem release/*Customer*.zip | Select-Object -First 1
+          if (-not $archive) { throw 'Customer ZIP missing' }
+          $customerDir = Join-Path $env:RUNNER_TEMP 'baccarat-customer'
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $customerDir
+          if (Get-ChildItem $customerDir -Recurse -Filter 'server-secrets.json') { throw 'Private seller settings included' }
+          $env:DESKTOP_TEST_EXECUTABLE = Join-Path $customerDir 'Baccarat Live Analyzer.exe'
+          if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Customer executable missing' }
+          if (-not (Test-Path (Join-Path $customerDir '사용방법.txt'))) { throw 'Portable usage guide missing' }
+          $env:CUSTOMER_RELEASE_TEST = '1'
+          npx --no-install playwright test customer-build.spec.ts --reporter=list,github
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baccarat-windows-customer
+          path: ${{ runner.temp }}/baccarat-customer/**
+          if-no-files-found: error

@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AnalyzerAPI, CollectorStatus } from '../shared/types';
 const api: AnalyzerAPI = {
+  licenseStatus:()=>ipcRenderer.invoke('license:status'),
+  activateLicense:code=>ipcRenderer.invoke('license:activate',code),
+  refreshLicense:()=>ipcRenderer.invoke('license:refresh'),
+  deactivateLicense:()=>ipcRenderer.invoke('license:deactivate'),
+  onLicense:callback=>{const listener=(_event:unknown,status:Parameters<typeof callback>[0])=>callback(status);ipcRenderer.on('license:changed',listener);return()=>ipcRenderer.removeListener('license:changed',listener);},
   accessStatus:()=>ipcRenderer.invoke('access:status'),
   unlock:password=>ipcRenderer.invoke('access:unlock',password),
   beginWindowDrag: point=>ipcRenderer.send('window:drag-start',point),

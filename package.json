@@ -1,6 +1,6 @@
 {
   "name": "baccarat-live-analyzer",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "private": true,
   "description": "Read-only baccarat result recording and statistical comparison",
   "author": "Baccarat Live Analyzer contributors",
@@ -17,7 +17,12 @@
     "test:watch": "vitest",
     "test:desktop": "npm run build && playwright test",
     "dist:win": "npm run build && electron-builder --win zip --x64",
-    "pack:linux": "npm run build && electron-builder --linux --dir"
+    "pack:linux": "npm run build && electron-builder --linux --dir",
+    "license:build": "node scripts/build-license-server.mjs",
+    "license:init": "node dist/license-server/server.cjs init",
+    "license:start": "node dist/license-server/server.cjs start",
+    "dist:customer": "node scripts/build-customer.mjs",
+    "test:licensed": "node scripts/test-licensed.mjs"
   },
   "dependencies": {
     "@tesseract.js-data/eng": "1.0.0",
@@ -54,7 +59,8 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "!dist/license-server/**/*"
     ],
     "directories": {
       "output": "release"
@@ -68,11 +74,15 @@
           ]
         }
       ],
-      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Portable.${ext}",
+      "artifactName": "Baccarat-Live-Analyzer-${version}-${arch}-Review.${ext}",
       "extraFiles": [
         {
-          "from": "packaging/portable-readme.txt",
+          "from": "dist/portable-readme.txt",
           "to": "사용방법.txt"
+        },
+        {
+          "from": "packaging/license-manual.txt",
+          "to": "라이선스-등록-해제-판매설명서.txt"
         }
       ]
     },

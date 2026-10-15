@@ -45,6 +45,11 @@ export interface AdapterProfile {
   ocr?: { imageSelector: string; roundSelector: string; roundAttribute: string };
 }
 export interface AnalyzerAPI {
+  licenseStatus():Promise<LicenseStatus>;
+  activateLicense(code:string):Promise<LicenseStatus>;
+  refreshLicense():Promise<LicenseStatus>;
+  deactivateLicense():Promise<LicenseStatus>;
+  onLicense(callback:(status:LicenseStatus)=>void):()=>void;
   accessStatus():Promise<AccessStatus>;
   unlock(password:string):Promise<AccessStatus>;
   captureWindows(): Promise<CaptureWindow[]>;
@@ -86,6 +91,7 @@ export interface CaptureInfo {
   previewUnchanged?:boolean;
 }
 export interface AccessStatus {locked:boolean;retryAfterMs:number}
+export interface LicenseStatus {mode:'review'|'licensed';allowed:boolean;message:string;licenseId?:string;expiresAt?:string}
 export interface ImageReview {
   id: string; outcomes: Outcome[]; confidence: number; preview: string; warnings: string[];
   format: 'bead' | 'big-road'; tieAfter: number[]; diagnostics?: RecognitionDiagnostics;

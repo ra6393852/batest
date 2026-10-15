@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Baccarat Analyzer · Chrome 연결",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "description": "허용한 바카라 탭의 결과만 로컬 분석기에 전달합니다. 자동 베팅과 로그인 정보 수집 기능은 없습니다.",
   "minimum_chrome_version": "120",
   "permissions": [

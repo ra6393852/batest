@@ -6,6 +6,7 @@ import { expandImageSequence } from '../shared/image-sequence';
 import {reviewHistory} from '../analysis/history-review';
 import type {AccessStatus} from '../shared/types';
 import './styles.css';
+import {LicenseGate} from './license-gate';
 declare global { interface Window { analyzer: AnalyzerAPI } }
 const labels: Record<Outcome, string> = { B: '뱅커', P: '플레이어', T: '타이' };
 const methodNames = { A: '기본 이론값', B: '최근 흐름', C: '연속 패턴', D: '전체 패턴' };
@@ -49,7 +50,7 @@ function AccessGate(){
   return <div className="access-screen"><form className="access-card" onSubmit={e=>{e.preventDefault();if(busy||!access||access.retryAfterMs)return;setBusy(true);setError('');
     void window.analyzer.unlock(password).then(result=>{setAccess(result);if(result.locked)setError(result.retryAfterMs?'잠시 후 다시 시도하세요.':'암호가 일치하지 않습니다.');else setPassword('');})
       .catch(()=>setError('잠금을 해제하지 못했습니다.')).finally(()=>setBusy(false));}}>
-    <span className="eyebrow">관리자 잠금</span><h1>Baccarat <span>Live Analyzer</span></h1><p>프로그램을 사용하려면 관리자 암호를 입력하세요.</p>
+    <span className="eyebrow">판매 서버 미설정 · 관리자 검토용</span><h1>Baccarat <span>Live Analyzer</span></h1><p>프로그램을 사용하려면 관리자 암호를 입력하세요. 이 검토용 파일에는 판매용 코드 보호가 적용되지 않았습니다.</p>
     <label>관리자 암호<input autoFocus type="password" autoComplete="off" aria-label="관리자 암호" value={password} maxLength={128} onChange={e=>setPassword(e.target.value)}/></label>
     {error&&<p role="alert">{error}</p>}<button disabled={busy||!access||!!access.retryAfterMs||!password}>{busy?'확인 중…':'잠금 해제'}</button>
   </form></div>;
@@ -276,4 +277,4 @@ function App() {
     </main>
   </div>;
 }
-createRoot(document.getElementById('root')!).render(<AccessGate/>);
+createRoot(document.getElementById('root')!).render(<LicenseGate review={<AccessGate/>}><App/></LicenseGate>);

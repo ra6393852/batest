@@ -11,11 +11,11 @@ test('board-only native capture uses 2x pixels without room/counter text, suppor
     app=await electron.launch({executablePath:process.env.DESKTOP_TEST_EXECUTABLE,args:['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])]});
     const page=await app.firstWindow();await unlockApp(page);await expect(page.getByRole('heading',{name:'Baccarat Live Analyzer'})).toBeVisible();
-    await expect(page.getByTestId('capture-version')).toContainText('0.5.8');
+    await expect(page.getByTestId('capture-version')).toContainText('0.6.0');
     const executable=await app.evaluate(()=>process.execPath);
     const duplicate=await new Promise<{stderr:string;code:string|number}>(resolve=>execFile(executable,['.','--smoke-test',`--test-data=${folder}`,
       ...(process.platform==='linux'&&process.env.ALLOW_UNSANDBOXED_FIXTURE_TEST==='1'?['--no-sandbox']:[])],{timeout:10000,windowsHide:true},(error,_out,stderr)=>resolve({stderr,code:error?.code??0})));
-    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.5.8');expect(duplicate.stderr).toContain('이미 실행 중');
+    expect(duplicate.code).toBe(0);expect(duplicate.stderr).toContain('실행 버전 0.6.0');expect(duplicate.stderr).toContain('이미 실행 중');
     await app.evaluate(async({BrowserWindow})=>{
       const fixture=new BrowserWindow({width:900,height:650,x:0,y:0,useContentSize:true,frame:false,title:'Baccarat Capture Fixture',webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
       await fixture.loadURL('data:text/html;charset=utf-8,'+encodeURIComponent('<title>Baccarat Capture Fixture</title><body style="margin:0;background:#18344b;font-family:Arial"><canvas id="board" width="350" height="80" style="position:absolute;left:10px;top:550px"></canvas></body>'));

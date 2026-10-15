@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, nativeImage, clipboard, type NativeImage, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell, nativeImage, clipboard, safeStorage, type NativeImage, type IpcMainInvokeEvent, type IpcMainEvent } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
@@ -16,6 +16,13 @@ import {BoardReader} from './board-reader';
 import {AccessLock,passwordKey,isolatedTestDirectory} from './access-lock';
 import {ADMIN_VERIFIER} from './admin-verifier';
 import {CaptureUpdates} from './capture-updates';
+import {LicenseClient} from './license-client';
+import type {LicenseConfig} from '../licensing/protocol';
+import type {LicenseStatus} from '../shared/types';
+declare const __LICENSE_CONFIG__:LicenseConfig|null;
+const salesConfig=__LICENSE_CONFIG__;
+let licensing:LicenseClient|undefined,licenseTimer:ReturnType<typeof setInterval>|undefined;
+const licensingStatus=():LicenseStatus=>licensing?.status()??{mode:salesConfig?'licensed':'review',allowed:false,message:salesConfig?'PC 인증 저장소를 사용할 수 없습니다. Windows 계정과 보호 저장소를 확인하세요.':'판매 서버 미설정 · 관리자 검토용입니다. 판매용 보호가 적용되지 않았습니다.'};
 import { analyzeBeadBitmap, ImageRecognitionError } from '../collector/bead-image';
 import { parseSequence } from '../analysis/simulation';
 import type { AdapterProfile, CollectorStatus, ImagePreview, ImageReview } from '../shared/types';
@@ -68,9 +75,10 @@ const boundsSchema = z.object({ x: z.number().int().nonnegative(), y: z.number()
 function local(event: IpcMainInvokeEvent | IpcMainEvent,requireUnlock=true) {
   if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== rendererURL)
     throw new Error('허용되지 않은 호출입니다.');
-  if(requireUnlock&&access.status().locked)throw new Error('관리자 암호로 잠금을 해제하세요.');
+  if(requireUnlock){if(salesConfig){if(!licensing)throw new Error('판매용 인증 초기화 실패');licensing.require();}else if(access.status().locked)throw new Error('관리자 암호로 잠금을 해제하세요.');}
 }
 function remote(event: IpcMainInvokeEvent | IpcMainEvent) {
+  if(salesConfig){if(!licensing)throw new Error('판매용 인증 초기화 실패');licensing.require();}
   if (!browser || event.sender !== browser.webContents || event.senderFrame !== browser.webContents.mainFrame) throw new Error('허용되지 않은 수집 호출입니다.');
   const url = event.senderFrame.url;
   if (mode === 'demo' ? url !== pathToFileURL(demoPath).href : !navigationAllowed(url, profile?.hosts ?? [])) throw new Error('허용되지 않은 수집 출처입니다.');
@@ -133,10 +141,23 @@ void app.whenReady().then(async () => {
   const captureUpdates=new CaptureUpdates();
   windowCapture=new WindowCapture(store,new ScoreReader(ocrResources,workerFile),new BoardReader(boardWorker),
     info=>{if(!window.isDestroyed())window.webContents.send('capture:changed',captureUpdates.next(info));},changed);
+  if(salesConfig){
+    const notifyLicense=(value:LicenseStatus)=>{if(!value.allowed){windowCapture?.stop();closeBrowser();void chromeBridge?.close();chromeBridge=undefined;}if(!window.isDestroyed())window.webContents.send('license:changed',value);};
+    if(safeStorage.isEncryptionAvailable()&&(process.platform==='win32'||safeStorage.getSelectedStorageBackend()!=='basic_text')){
+      licensing=new LicenseClient(salesConfig,join(isSmoke?app.getPath('userData'):join(app.getPath('appData'),'BaccaratLiveAnalyzer'),'license-device.dat'),{
+        encrypt:value=>safeStorage.encryptString(value),decrypt:value=>safeStorage.decryptString(value)},notifyLicense);
+      void licensing.refresh();
+      let tick=0,wasAllowed=false;licenseTimer=setInterval(()=>{tick++;const current=licensing!.status();if(wasAllowed&&!current.allowed)notifyLicense(current);wasAllowed=current.allowed;if(tick%30===0)void licensing!.refresh();},1000);
+    }
+  }
+  ipcMain.handle('license:status',event=>{local(event,false);return licensingStatus();});
+  ipcMain.handle('license:activate',async(event,code)=>{local(event,false);if(!licensing)throw new Error('판매용 서버 설정 또는 PC 보호 저장소가 없습니다.');return licensing.activate(z.string().max(100).parse(code));});
+  ipcMain.handle('license:refresh',async event=>{local(event,false);return licensing?licensing.refresh():licensingStatus();});
+  ipcMain.handle('license:deactivate',async event=>{local(event,false);if(!licensing)throw new Error('등록된 판매용 이용권이 없습니다.');const answer=await dialog.showMessageBox(window,{type:'warning',buttons:['취소','이 PC 등록 해제'],defaultId:0,cancelId:0,message:'이 PC의 등록을 해제할까요?',detail:'분석을 중지합니다. 남은 이용 기간과 결과 기록은 유지됩니다. 새 PC 등록까지 최대 2분 기다릴 수 있습니다.'});if(answer.response!==1)return licensingStatus();return licensing.deactivate();});
   ipcMain.handle('access:status',event=>{local(event,false);return access.status();});
   let chromeStarting:Promise<void>|undefined;
   ipcMain.handle('access:unlock',async(event,password)=>{local(event,false);const result=await access.unlock(password);
-    if(!result.locked){chromeStarting??=startChromeBridge();await chromeStarting;}return result;});
+    if(!result.locked&&!salesConfig){chromeStarting??=startChromeBridge();await chromeStarting;}return result;});
   ipcMain.handle('capture:windows',async event=>{local(event);return windowCapture!.windows();});
   ipcMain.handle('capture:start',async(event,id)=>{local(event);await windowCapture!.start(z.string().regex(/^window:\d+:\d+$/).parse(id));});
   ipcMain.handle('capture:stop',event=>{local(event);windowCapture!.stop();});
@@ -152,7 +173,7 @@ void app.whenReady().then(async () => {
   const notifyChrome = () => { if (!window.isDestroyed()) window.webContents.send('chrome:changed', chromeBridge?.info()); };
   async function startChromeBridge(){if (!isSmoke && process.argv.includes('--enable-chrome-bridge')) {
     chromeBridge = new ChromeBridge(join(app.getPath('userData'), 'chrome-bridge.json'), () => profile,
-      rows => { store.ingest(rows); changed(); }, notifyChrome,
+      rows => { if(salesConfig)licensing!.require();store.ingest(rows); changed(); }, notifyChrome,
       (message, collecting) => status(collecting ? 'collecting' : 'unsupported', message, collecting ? 'visible-only' : 'unknown'));
     try { await chromeBridge.listen(); } catch {
       // Keep offline analysis available if another local application owns the port.
@@ -258,7 +279,7 @@ void app.whenReady().then(async () => {
       const parsed = parseOCR(recognized.text, recognized.confidence);
       if (!parsed) { status('error', 'OCR 결과가 B/P/T 단일 결과가 아님 · 자동 확정하지 않음'); return; }
       const observation = observationSchema.parse({ roomId: data.roomId, roomName: data.roomName, shoeId: data.shoeId, round: data.round, ...parsed, source: 'ocr', historical: true });
-      store.ingest(ocrTracker.filter([observation])); lastOCR = key; changed();
+      if(salesConfig)licensing!.require();store.ingest(ocrTracker.filter([observation])); lastOCR = key; changed();
     } finally { ocrBusy = false; }
   });
   await window.loadFile(rendererPath);
@@ -266,4 +287,6 @@ void app.whenReady().then(async () => {
 }).catch(() => { dialog.showErrorBox('실행 실패', '데이터베이스 또는 앱 초기화 실패. 기존 데이터 파일은 삭제하지 마세요.'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
+let licenseClosing=false;
+app.on('before-quit',event=>{if(licensing&&!licenseClosing){event.preventDefault();licenseClosing=true;if(licenseTimer)clearInterval(licenseTimer);windowCapture?.stop();void Promise.race([licensing.release(),new Promise(resolve=>setTimeout(resolve,2000))]).finally(()=>app.quit());}});
 app.on('will-quit', () => { if (windowCapture) void windowCapture.close(); if (chromeBridge) void chromeBridge.close(); store?.close(); if (ocrWorker) void ocrWorker.terminate(); if (scoreReader) void scoreReader.close(); });

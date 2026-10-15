@@ -1,6 +1,6 @@
 # Baccarat Live Analyzer
 
-Windows 10/11용 읽기 전용 바카라 통계 프로그램입니다. `ra6393852/batest`에서 Electron/React/TypeScript와 SQLite로 개발합니다. **0.5.8은 새 회차 확인과 판독 대기 전환 중 기록표가 접혀 스크롤이 이동하던 문제를 수정합니다.** 숫자 그림장은 색으로 승패, 숫자로 표시 점수를 읽습니다.
+Windows 10/11용 읽기 전용 바카라 통계 프로그램입니다. `ra6393852/batest`에서 Electron/React/TypeScript와 SQLite로 개발합니다. **0.6.0은 1~12개월 코드 발급, PC 1대 등록·해제, 기간 연장·차단, 판매용 서버 인증을 추가합니다.** 운영 서버는 아직 배포되지 않았습니다. 숫자 그림장은 색으로 승패, 숫자로 표시 점수를 읽습니다.
 
 ## 한눈에 보는 실시간 화면
 
@@ -105,7 +105,7 @@ npm run test:desktop
 npm run dist:win
 ```
 
-생성 파일: `release/Baccarat-Live-Analyzer-0.5.8-x64-Portable.zip`. [Windows CI](.github/workflows/windows.yml)는 소스 테스트 → ZIP 빌드 → 압축 해제한 실제 EXE 테스트 후 폴더 전체를 `baccarat-windows-x64-portable`로 제공합니다. 설치 파일·실행 프로토콜 자동 등록은 포함하지 않습니다.
+일반 생성 파일: `release/Baccarat-Live-Analyzer-0.6.0-x64-Review.zip`. **Review는 관리자 검토용이며 코드 보호가 없습니다. 보호된 판매용으로 배포하지 마세요.** [Windows CI](.github/workflows/windows.yml)는 기존 소스/실제 EXE 검사와 별도로 임시 서버에 고정된 Customer 소스/EXE 인증 및 관리 화면을 검사합니다. 일반 검토용 폴더는 `baccarat-windows-x64-portable`, 별도 서버 패키지는 `baccarat-seller-license-server`입니다. 설치 파일·실행 프로토콜 자동 등록은 포함하지 않습니다.
 
 Linux 검증: `bash scripts/test-cloud.sh`. [개발 환경 안내](docs/cloud.md)와 [검증 기록](docs/validation.md)를 참고하세요. 실제 사이트 로그인/제공자 보호 화면은 미검증이며 테스트 자료의 적중률을 실제 예측 성능으로 표현하지 않습니다.
 
@@ -115,4 +115,27 @@ Linux 검증: `bash scripts/test-cloud.sh`. [개발 환경 안내](docs/cloud.md
 
 확인된 과거 행과 표의 자리는 판독 대기에도 유지합니다. 대기 중 과거 행은 저장된 이전 기록임을 표시하고, 현재 화면이 확인되지 않은 미래 예상 답은 표시하지 않습니다. 기준 선택 영역·보기 버튼·선택 묶음·추정치 영역도 갑자기 접히지 않도록 유지합니다. 새 행 추가에 따른 브라우저의 자동 스크롤 보정을 끄며 사용자의 스크롤과 이미지 드래그는 계속 동작합니다.
 
-1~12개월 이용 기간 선택과 수천 개 코드 관리에 대한 추천 설계는 [라이선스 설계안](docs/licensing-plan.md)에 정리했습니다. 코드마다 선택 기간을 저장하고 최초 인증부터 계산하며, 재결제 때 원하는 개월 수만큼 연장하는 방식입니다. 이번 버전에는 판매용 라이선스 서버를 구현하거나 배포하지 않았습니다.
+## 판매용 인증과 PC 등록·해제
+
+[상세 텍스트 설명서](packaging/license-manual.txt)는 앱 ZIP과 서버 패키지에 **라이선스-등록-해제-판매설명서.txt**로 포함됩니다. [인증 구조](docs/licensing-plan.md)도 참고하세요.
+
+```powershell
+npm run license:build
+npm run license:init -- --url https://본인인증도메인 --data license-data
+npm run license:start -- --data license-data --port 4380
+```
+
+초기화 때 12~128자 판매자 암호를 숨김 입력합니다. 서버는 localhost에만 바인딩하므로 공개 서버에서는 Caddy 등의 HTTPS 프록시를 연결합니다. 관리자 페이지 `/admin`에서 1~12개월/수량(최대10,000)/고객 메모를 선택해 코드를 발급하고 CSV로 한 번만 전달합니다. 서버는 코드 해시만 저장합니다. 검색/100개 페이지/연장/PC 해제/차단/이력을 제공합니다. 결제 확인과 코드 전달은 수동입니다.
+
+서버에서 생성한 **공개 설정만** Windows 개발 PC로 복사해 판매용 빌드를 만듭니다:
+
+```powershell
+npm run typecheck
+npm run dist:customer -- C:/안전한폴더/license-public.json
+```
+
+`release/Baccarat-Live-Analyzer-0.6.0-x64-Customer.zip`에는 서버 주소와 Ed25519 공개 키가 빌드에 고정됩니다. HTTPS 설정이 없으면 판매용 빌드는 실패합니다. 구매자는 **이용 코드 → 이 PC에 등록**으로 시작하고 **이용권·PC 등록 → 이 PC 등록 해제**로 이동합니다. DPAPI 암호화 기기 키는 앱/USB 폴더 밖에 저장하며 30초마다 서버를 갱신합니다. 해제/차단 반영 및 새 PC 등록은 기존 짧은 인증 종료까지 최대2분 걸릴 수 있습니다. 만료/해제는 결과 기록을 삭제하지 않습니다.
+
+`server-secrets.json`, 서버 DB, 발급 CSV는 고객에게 보내지 않습니다. 인터넷 인증 필수이며 TPM/완전한 크랙 방지/기존 보호 없는 구버전 회수는 구현하지 않습니다. 현재 공개 서버·DNS·TLS·실고객 PC·동시 수천 명 부하는 미검증입니다.
+
+Windows 인증 검사: `npm run test:licensed`, 실제 Customer EXE: `npm run test:licensed -- --package`. 임시 서버 키를 빌드에 넣어 실제 등록·거절·해제·연장·차단·만료를 확인하고 검사가 끝나면 Review 빌드를 복원합니다.

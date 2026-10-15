@@ -20,13 +20,21 @@ jobs:
       - run: npx --no-install playwright install chromium
       - run: npm test
       - run: npm run test:desktop -- --reporter=list,github
+      - name: Validate pinned customer source and packaged EXE
+        run: |
+          npm run test:licensed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:licensed -- --package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Extract and validate portable Windows app
         shell: pwsh
         run: |
-          $archive = Get-ChildItem release/*Portable.zip | Select-Object -First 1
+          $archive = Get-ChildItem release/*Review.zip | Select-Object -First 1
           if (-not $archive) { throw 'Portable ZIP missing' }
           $portableDir = Join-Path $env:RUNNER_TEMP 'baccarat-portable'
           $protocolPath = 'Registry::HKEY_CURRENT_USER\Software\Classes\baccarat-analyzer'
@@ -36,10 +44,20 @@ jobs:
           $env:DESKTOP_TEST_OCR_RESOURCES = Join-Path $portableDir 'resources/ocr'
           if (-not (Test-Path $env:DESKTOP_TEST_EXECUTABLE)) { throw 'Portable executable missing' }
           if (-not (Test-Path (Join-Path $portableDir '사용방법.txt'))) { throw 'Portable usage guide missing' }
+          if (-not (Test-Path (Join-Path $portableDir '라이선스-등록-해제-판매설명서.txt'))) { throw 'License manual missing' }
           if (Get-ChildItem $portableDir -Recurse -Filter '*Setup.exe') { throw 'Installer included in portable ZIP' }
           npx --no-install playwright test --reporter=list,github
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ((Test-Path $protocolPath) -ne $protocolBefore) { throw 'Portable app changed protocol registration' }
+      - name: Prepare seller server package
+        shell: pwsh
+        run: |
+          $sellerDir = Join-Path $env:RUNNER_TEMP 'baccarat-seller-server'
+          New-Item -ItemType Directory -Force $sellerDir | Out-Null
+          Copy-Item dist/license-server/server.cjs $sellerDir
+          Copy-Item packaging/license-manual.txt (Join-Path $sellerDir '라이선스-등록-해제-판매설명서.txt')
+          Copy-Item packaging/server-init.cmd (Join-Path $sellerDir '초기화.cmd')
+          Copy-Item packaging/server-start.cmd (Join-Path $sellerDir '서버시작.cmd')
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -50,4 +68,9 @@ jobs:
         with:
           name: baccarat-windows-x64-portable
           path: ${{ runner.temp }}/baccarat-portable/**
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baccarat-seller-license-server
+          path: ${{ runner.temp }}/baccarat-seller-server/**
           if-no-files-found: error

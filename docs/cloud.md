@@ -34,3 +34,11 @@ Node.js 24, 고정 lockfile의 npm ci, 공식 체크섬/TLS를 유지하는 Elec
 history-review.ts는 각 회차의 결과와 점수를 가리고 앞선 연속 구간으로만 과거 검증합니다. 실시간 settlements와 별개이며 1회차는 이론 기준입니다. store.ts의 변경 시 무효화 캐시와 외부 수정 격리, capture-updates.ts의 변하지 않은 PNG 생략도 검사합니다. native 캡처 화면 배치 검사는 실시간 보기에서 수행하고, 클립보드 검사는 1회차부터30회차까지의 단일 표·과거 검증 표시·실시간 적중률 불변을 검사합니다.
 
 0.5.8은 판독 대기 시 과거 행 유지, 기준/보기/묶음/추정치 공간 유지, 브라우저 스크롤 앵커 보정 해제입니다. native 캡처 검사는 24회까지 저장한 뒤 전체 보기를 스크롤하고, 25번째 결과의 색 충돌 보류와 정상 25회 복귀 때 페이지 scrollY가 정확히 유지되는지 확인합니다. 대기 중 과거 행은 남고 미래 예상 답은 없어야 합니다. 첫 원이 B여도 반대색을 칠하도록 모호한 fixture도 바로잡았습니다. 테스트 추가에 따라 이전 방 보존 결과는 25개입니다. 판매 라이선스는 문서 설계만 있으며 서버/실제 코드 발급은 미구현입니다.
+# 0.6.0 라이선스 개발 추가 사항
+
+기존 체크아웃과 캐시를 그대로 사용합니다. 서버 번들은 Node.js 24 내장 SQLite를 사용하며 새 npm 의존성은 없습니다. `npm run build`는 검토용 앱과 `dist/license-server/server.cjs`를 만듭니다. `npm test`에는 1~12개월 계산, 10,000개 발급, 기기·세션 제한, HTTP 관리자/서명/재생 거절, 암호화 인증 저장소/재시작/복사/장애 검사가 포함됩니다.
+
+Linux에서는 `bash scripts/test-cloud.sh`로 기존 분석기를 검증합니다. Windows에서는 `npm run test:licensed`와 `npm run test:licensed -- --package`로 임시 실제 서버에 고정된 Customer 소스/EXE, DPAPI, 등록·해제·연장·차단·만료, 관리자 브라우저를 검사합니다. 검사가 끝나면 Review 빌드를 복원합니다. 실제 고객용은 `npm run dist:customer -- 공개설정.json`이며 HTTPS 주소를 요구합니다. 개인 키/고객 코드/운영 암호는 설정 초안이나 Git에 넣지 않습니다.
+
+로컬 서버 검토는 `npm run license:init -- --url http://127.0.0.1:4380 --data local-test-data`와 `npm run license:start -- --data local-test-data --port 4380`입니다. 암호는 터미널에서 숨김 입력합니다. `/health`의 `{ok:true}`와 실제 코드 발급/등록으로 기능을 확인하세요. 프로세스는 다음 환경에 유지되지 않으므로 필요할 때 다시 시작합니다. 공개 서버·DNS·TLS는 별도 배포가 필요합니다. 환경 온보딩 UI에 localhost 미리보기 링크를 만들지 않습니다.
+

@@ -17,6 +17,7 @@ import {AccessLock,passwordKey,isolatedTestDirectory} from './access-lock';
 import {ADMIN_VERIFIER} from './admin-verifier';
 import {CaptureUpdates} from './capture-updates';
 import {LicenseClient} from './license-client';
+import {trustedLocalFile} from './trusted-renderer';
 import type {LicenseConfig} from '../licensing/protocol';
 import type {LicenseStatus} from '../shared/types';
 declare const __LICENSE_CONFIG__:LicenseConfig|null;
@@ -65,7 +66,7 @@ async function inspectImage(image: NativeImage): Promise<ImageReview | ImagePrev
 }
 const rendererPath = join(__dirname, '../renderer/index.html');
 const demoPath = join(__dirname, '../fixtures/table.html');
-const rendererURL = pathToFileURL(rendererPath).href;
+const trustedRenderer=trustedLocalFile(rendererPath);
 const isSmoke = process.argv.includes('--smoke-test');
 // Smoke tests use an isolated DB and session, never the user's records or login state.
 if (isSmoke) { const dataArg = process.argv.find(v => v.startsWith('--test-data='));
@@ -73,7 +74,7 @@ if (isSmoke) { const dataArg = process.argv.find(v => v.startsWith('--test-data=
   app.setPath('userData', isolatedTestDirectory(dataArg.slice('--test-data='.length))); }
 const boundsSchema = z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), width: z.number().int().min(1), height: z.number().int().min(1) }).strict();
 function local(event: IpcMainInvokeEvent | IpcMainEvent,requireUnlock=true) {
-  if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== rendererURL)
+  if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !trustedRenderer(event.senderFrame.url))
     throw new Error('허용되지 않은 호출입니다.');
   if(requireUnlock){if(salesConfig){if(!licensing)throw new Error('판매용 인증 초기화 실패');licensing.require();}else if(access.status().locked)throw new Error('관리자 암호로 잠금을 해제하세요.');}
 }

@@ -41,4 +41,3 @@ history-review.ts는 각 회차의 결과와 점수를 가리고 앞선 연속 �
 Linux에서는 `bash scripts/test-cloud.sh`로 기존 분석기를 검증합니다. Windows에서는 `npm run test:licensed`와 `npm run test:licensed -- --package`로 임시 실제 서버에 고정된 Customer 소스/EXE, DPAPI, 등록·해제·연장·차단·만료, 관리자 브라우저를 검사합니다. 검사가 끝나면 Review 빌드를 복원합니다. 실제 고객용은 `npm run dist:customer -- 공개설정.json`이며 HTTPS 주소를 요구합니다. 개인 키/고객 코드/운영 암호는 설정 초안이나 Git에 넣지 않습니다.
 
 로컬 서버 검토는 `npm run license:init -- --url http://127.0.0.1:4380 --data local-test-data`와 `npm run license:start -- --data local-test-data --port 4380`입니다. 암호는 터미널에서 숨김 입력합니다. `/health`의 `{ok:true}`와 실제 코드 발급/등록으로 기능을 확인하세요. 프로세스는 다음 환경에 유지되지 않으므로 필요할 때 다시 시작합니다. 공개 서버·DNS·TLS는 별도 배포가 필요합니다. 환경 온보딩 UI에 localhost 미리보기 링크를 만들지 않습니다.
-

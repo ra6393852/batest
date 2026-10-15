@@ -1,8 +1,9 @@
 import {resolve,join} from 'node:path';
-import {chmodSync} from 'node:fs';
+import {chmodSync,writeFileSync} from 'node:fs';
 import {createInterface} from 'node:readline/promises';
 import {Writable} from 'node:stream';
-import {initialize,readSettings} from './settings';
+import {initialize,readSettings,saveSettings} from './settings';
+import {checkConfig} from '../licensing/protocol';
 import {LicenseStore} from './store';
 import {createLicenseServer} from './server';
 async function main(){
@@ -14,7 +15,11 @@ async function main(){
     const muted=new Writable({write(_chunk,_encoding,done){done();}}),rl=createInterface({input:process.stdin,output:muted,terminal:!!process.stdin.isTTY});
     try{const password=await rl.question('');initialize(directory,option('--url'),password);process.stdout.write('\n초기화 완료. license-public.json은 고객용 빌드에 사용하세요. server-secrets.json과 DB는 판매자만 보관하세요.\n');}finally{rl.close();}return;
   }
-  if(command!=='start')throw new Error('명령: init --url https://서버주소 또는 start [--data license-data] [--port 4380]');
+  if(command==='configure'){
+    if(!args.includes('--url'))throw new Error('configure --url https://실제서버주소 --data license-data 형식으로 실행하세요.');
+    const settings=readSettings(directory),config=checkConfig({url:option('--url'),publicKey:settings.publicKey});settings.url=config.url;saveSettings(directory,settings);writeFileSync(join(directory,'license-public.json'),JSON.stringify(config,null,2),{mode:0o600});console.log('주소 설정 완료. 서버를 재시작하고 갱신된 공개 설정으로 Customer를 빌드하세요. 기존 키와 기록은 유지됩니다.');return;
+  }
+  if(command!=='start')throw new Error('명령: init --url https://서버주소, configure --url https://서버주소, start [--data license-data] [--port 4380]');
   const settings=readSettings(directory),store=new LicenseStore(join(directory,'licenses.sqlite'),settings.privateKey);chmodSync(join(directory,'licenses.sqlite'),0o600);
   const server=createLicenseServer(store,settings,directory),port=Number(args.includes('--port')?option('--port'):'4380');
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('올바른 포트 번호를 지정하세요.');
